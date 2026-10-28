@@ -18,7 +18,6 @@ def test_inside_text_becomes_text():
     assert render("List: {{n1.output.emails}}", CTX) == 'List: ["Server down!", "Lunch?"]'
 
 
-
 def test_nested_dicts_and_lists():
     assert render({"to": "me", "body": "{{n1.output.count}}", "tags": ["{{n1.output.meta.from}}"]}, CTX) == {
         "to": "me",
@@ -31,7 +30,6 @@ def test_non_strings_unchanged():
     assert render(5, CTX) == 5
     assert render(None, CTX) is None
     assert render("no templates here", CTX) == "no templates here"
-
 
 
 def test_spaces_inside_braces():

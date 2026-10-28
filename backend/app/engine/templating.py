@@ -38,10 +38,8 @@ def lookup(path: str, context: dict[str, Any]) -> Any:
     return current
 
 
-
-
 # Assumed defined elsewhere in your file:
-# PLACEHOLDER = re.compile(r'\${([^}]+)}') 
+# PLACEHOLDER = re.compile(r'\${([^}]+)}')
 
 
 def render(value: Any, context: dict[str, Any]) -> Any:
@@ -52,7 +50,8 @@ def render(value: Any, context: dict[str, Any]) -> Any:
         if m:
             return lookup(m.group(1), context)
 
-               # Rule 2: placeholders inside text
+            # Rule 2: placeholders inside text
+
         def replacer(match: re.Match) -> str:
             found = lookup(match.group(1), context)
             if isinstance(found, str):
@@ -61,16 +60,14 @@ def render(value: Any, context: dict[str, Any]) -> Any:
 
         return PLACEHOLDER.sub(replacer, value)
 
-
-           # 2. Dictionary Processing
+        # 2. Dictionary Processing
     if isinstance(value, dict):
-                  return {k: render(v, context) for k, v in value.items()}
-          
-              # 3. List Processing
+        return {k: render(v, context) for k, v in value.items()}
+
+    # 3. List Processing
     if isinstance(value, list):
-                  return [render(v, context) for v in value]
-          
-              # 4. Rules 3-6 / Fallback
+        return [render(v, context) for v in value]
+
+    # 4. Rules 3-6 / Fallback
 
     return value
-
