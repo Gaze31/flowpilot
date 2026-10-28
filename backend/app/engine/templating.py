@@ -17,34 +17,60 @@ Rules (the tests check each one):
   6. Spaces inside braces are allowed: "{{ n1.output.count }}".
 """
 
-import json  # noqa: F401
+import json
 import re
 from typing import Any
 
-from app.errors import TemplateError  # noqa: F401
+from app.errors import TemplateError
 
 PLACEHOLDER = re.compile(r"\{\{\s*([A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)+)\s*\}\}")
 
 
 def lookup(path: str, context: dict[str, Any]) -> Any:
-    """'n1.output.emails' -> context['n1']['output']['emails'].
+    current = context
+    keys = path.split(".")
 
-    TODO (Week 2): split on '.', walk the dicts one key at a time.
-    If a key is missing (or you hit something that isn't a dict), raise
-    TemplateError(f"unknown reference: {path}").
-    """
-    raise NotImplementedError("lookup: see TODO in app/engine/templating.py")
+    for key in keys:
+        if not isinstance(current, dict) or key not in current:
+            raise TemplateError(f"unknown reference: {path}")
+        current = current[key]
+
+    return current
+
+
+
+
+# Assumed defined elsewhere in your file:
+# PLACEHOLDER = re.compile(r'\${([^}]+)}') 
 
 
 def render(value: Any, context: dict[str, Any]) -> Any:
-    """Apply rules 1-6 above.
+    # 1. String Processing
+    if isinstance(value, str):
+        # Rule 1: Full-string placeholder returns the raw matched object type
+        m = PLACEHOLDER.fullmatch(value)
+        if m:
+            return lookup(m.group(1), context)
 
-    TODO (Week 2):
-      - str:  m = PLACEHOLDER.fullmatch(value) -> rule 1.
-              otherwise PLACEHOLDER.sub(replacer, value) -> rule 2
-              (replacer gets a match; m.group(1) is the path).
-      - dict: {k: render(v, context) for ...}
-      - list: [render(v, context) for ...]
-      - else: return value
-    """
-    raise NotImplementedError("render: see TODO in app/engine/templating.py")
+               # Rule 2: placeholders inside text
+        def replacer(match: re.Match) -> str:
+            found = lookup(match.group(1), context)
+            if isinstance(found, str):
+                return found
+            return json.dumps(found)
+
+        return PLACEHOLDER.sub(replacer, value)
+
+
+           # 2. Dictionary Processing
+    if isinstance(value, dict):
+                  return {k: render(v, context) for k, v in value.items()}
+          
+              # 3. List Processing
+    if isinstance(value, list):
+                  return [render(v, context) for v in value]
+          
+              # 4. Rules 3-6 / Fallback
+
+    return value
+
