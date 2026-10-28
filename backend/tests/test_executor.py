@@ -25,7 +25,6 @@ async def steps_of(db, run_id):
     return (await db.scalars(select(StepRun).where(StepRun.run_id == run_id).order_by(StepRun.created_at))).all()
 
 
-@todo(2, "executor.execute_run")
 async def test_success_passes_outputs_forward(db, fake_sleep):
     run_id = await make_run(
         db,
@@ -43,7 +42,6 @@ async def test_success_passes_outputs_forward(db, fake_sleep):
     assert steps[1].input == {"greeting": "Hi Mikasa"}  # input is saved AFTER rendering
 
 
-@todo(2, "executor.execute_run (retries)")
 async def test_flaky_node_retries_with_backoff(db, fake_sleep, sleeps):
     run_id = await make_run(db, chain_graph(("n1", "test.flaky", {"fail_times": 2})))
     run = await execute_run(db, run_id, sleep=fake_sleep)

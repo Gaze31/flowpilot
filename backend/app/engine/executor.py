@@ -62,38 +62,91 @@ async def execute_run(db: AsyncSession, run_id: uuid.UUID, sleep: Sleep = asynci
     """Run every node of the run's workflow in order. Returns the finished Run.
 
     `sleep` is passed in so tests can replace it with a fake that doesn't really wait.
-
-    TODO (Week 2), step by step:
-      1. Load the Run (db.get(Run, run_id)); if None raise NotFound("run not found").
-         Load its Workflow (db.get(Workflow, run.workflow_id)).
-      2. Set run.status = RUNNING and run.started_at = datetime.now(UTC); commit.
-      3. order = topological_sort(workflow.graph)
-         nodes_by_id = {n["id"]: n for n in workflow.graph["nodes"]}
-         context = {}   # filled as nodes finish: context[node_id] = {"output": output}
-      4. For each node_id in order:
-           node = nodes_by_id[node_id]; impl = get_node(node["type"])
-           max_tries = settings.max_attempts if impl.retryable else 1
-           for attempt in 1..max_tries:
-               started = time.perf_counter()
-               try:
-                   config = render(node.get("config", {}), context)
-                   output = await impl.run(config, context)
-               except Exception as exc:   # record EVERY failed attempt
-                   await record_step(..., StepStatus.FAILED, input_=<config if rendered else {}>,
-                                     started=started, error=f"{type(exc).__name__}: {exc}")
-                   if attempt < max_tries: await sleep(backoff_seconds(attempt)); continue
-                   -> mark the run FAILED: run.error = f"node {node_id} failed: {exc}",
-                      run.finished_at = now, commit, and return run (stop: later nodes don't run)
-               else:
-                   await record_step(..., StepStatus.SUCCEEDED, ..., output=output)
-                   context[node_id] = {"output": output}
-                   break
-      5. All nodes done: run.status = SUCCEEDED, run.finished_at = now, commit, return run.
-
-    Edge cases the tests check:
-      - a node that fails twice then succeeds -> 3 step rows (fail, fail, ok) and sleeps of 1s and 2s
-      - a node that always fails -> run FAILED after max_attempts, later nodes never run
-      - a non-retryable node (retryable = False) is tried exactly once
-      - templates: n2's config can use {{n1.output.x}}
     """
-    raise NotImplementedError("execute_run: see TODO in app/engine/executor.py")
+    settings = get_settings()
+
+    # 1. Load the Run and its associated Workflow
+    run = await db.get(Run, run_id)
+    if run is None:
+        raise NotFound("run not found")
+
+    workflow = await db.get(Workflow, run.workflow_id)
+    if workflow is None:
+        raise NotFound("workflow not found")
+
+    # 2. Set run status to RUNNING, mark start time, and commit state
+    run.status = RunStatus.RUNNING
+    run.started_at = datetime.now(UTC)
+    await db.commit()
+
+    # 3. Establish dependency sorting and context parameters
+    order = topological_sort(workflow.graph)
+    nodes_by_id = {n["id"]: n for n in workflow.graph["nodes"]}
+    context = {}  # Filled dynamically: context[node_id] = {"output": output}
+
+    # 4. Iterate over execution pipeline in dependency order
+    for node_id in order:
+        node = nodes_by_id[node_id]
+        impl = get_node(node["type"])
+
+        # Calculate max attempts based on node architecture type
+        max_tries = settings.max_attempts if impl.retryable else 1
+
+        # Guard config block initialization for exception safety tracking
+        rendered_config = {}
+
+        for attempt in range(1, max_tries + 1):
+            started = time.perf_counter()
+            try:
+                # Dynamically compile configuration values from previous node outputs
+                rendered_config = render(node.get("config", {}), context)
+                output = await impl.run(rendered_config, context)
+
+            except Exception as exc:
+                # Record EVERY failed execution attempt distinctly
+                await record_step(
+                    db=db,
+                    run=run,
+                    node=node,
+                    attempt=attempt,
+                    status=StepStatus.FAILED,
+                    input_=rendered_config,
+                    started=started,
+                    error=f"{type(exc).__name__}: {exc}",
+                )
+
+                # Check if we have more retries left in the quota
+                if attempt < max_tries:
+                    await sleep(backoff_seconds(attempt))
+                    continue
+
+                # Out of retries: Stop the workflow pipeline completely
+                run.status = RunStatus.FAILED
+                run.error = f"node {node_id} failed: {exc}"
+                run.finished_at = datetime.now(UTC)
+                await db.commit()
+                return run
+
+            else:
+                # Successful execution trace recorded immediately
+                await record_step(
+                    db=db,
+                    run=run,
+                    node=node,
+                    attempt=attempt,
+                    status=StepStatus.SUCCEEDED,
+                    input_=rendered_config,
+                    started=started,
+                    output=output,
+                )
+
+                # Cache the results inside context for downstream dependencies
+                context[node_id] = {"output": output}
+                break
+
+    # 5. Pipeline completion reached successfully
+    run.status = RunStatus.SUCCEEDED
+    run.finished_at = datetime.now(UTC)
+    await db.commit()
+
+    return run
