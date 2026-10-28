@@ -34,7 +34,11 @@ def set_redis(client: Redis) -> None:
 
 async def enqueue_run(run_id: uuid.UUID) -> None:
     """TODO (Week 2): LPUSH the run id (as a string) onto settings.queue_name."""
-    raise NotImplementedError("enqueue_run: see TODO in app/engine/queue.py")
+    settings = get_settings()
+    redis_client = get_redis()
+
+    # LPUSH the run id as a string to the left end of the list
+    await redis_client.lpush(settings.queue_name, str(run_id))
 
 
 async def dequeue_run(timeout: int = 5) -> uuid.UUID | None:
@@ -44,4 +48,18 @@ async def dequeue_run(timeout: int = 5) -> uuid.UUID | None:
       - It returns None if nothing arrived in time -> return None.
       - Otherwise it returns (queue_name, value) -> return uuid.UUID(value).
     """
-    raise NotImplementedError("dequeue_run: see TODO in app/engine/queue.py")
+    settings = get_settings()
+    redis_client = get_redis()
+
+    # BRPOP blocks until an item is available or the timeout is hit
+    result = await redis_client.brpop(settings.queue_name, timeout)
+
+    # If the timeout expires without an item, Redis returns None
+    if result is None:
+        return None
+
+    # BRPOP returns a tuple: (queue_name, value)
+    _, value = result
+
+    # Convert the string value back into a uuid.UUID object
+    return uuid.UUID(value)

@@ -11,7 +11,7 @@ async def create(client, graph=GRAPH) -> str:
     return (await client.post("/workflows", json={"name": "t", "graph": graph})).json()["id"]
 
 
-@todo(2, "start run: topological_sort + enqueue_run")
+
 async def test_start_run_queues_it(client):
     wf_id = await create(client)
     r = await client.post(f"/workflows/{wf_id}/runs")
