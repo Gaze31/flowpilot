@@ -2,7 +2,7 @@
 
 from app import worker
 from app.engine.queue import dequeue_run
-from tests.conftest import chain_graph, raise_if_todo, todo
+from tests.conftest import chain_graph, raise_if_todo
 
 GRAPH = chain_graph(("n1", "trigger.manual", {}), ("n2", "test.echo", {"x": "{{n1.output.payload}}"}))
 
@@ -33,7 +33,6 @@ async def test_cycle_is_rejected_before_queueing(client, fresh_db_and_redis):
     assert await fresh_db_and_redis.llen("flowpilot:runs") == 0  # nothing was queued
 
 
-@todo(2, "worker.process_one")
 async def test_worker_runs_a_queued_run_end_to_end(client):
     wf_id = await create(client)
     r = await client.post(f"/workflows/{wf_id}/runs")
