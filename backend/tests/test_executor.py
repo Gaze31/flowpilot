@@ -8,7 +8,7 @@ from sqlalchemy import select
 from app.engine.executor import execute_run
 from app.errors import NotFound
 from app.models import Run, RunStatus, StepRun, StepStatus, Workflow
-from tests.conftest import CALLS, chain_graph, todo
+from tests.conftest import CALLS, chain_graph
 
 
 async def make_run(db, graph) -> uuid.UUID:
@@ -52,7 +52,6 @@ async def test_flaky_node_retries_with_backoff(db, fake_sleep, sleeps):
     assert "temporary failure #1" in steps[0].error
 
 
-@todo(2, "executor.execute_run (failure)")
 async def test_failing_node_stops_the_run(db, fake_sleep, sleeps):
     run_id = await make_run(db, chain_graph(("n1", "test.fail", {}), ("n2", "test.echo", {})))
     run = await execute_run(db, run_id, sleep=fake_sleep)
@@ -63,7 +62,6 @@ async def test_failing_node_stops_the_run(db, fake_sleep, sleeps):
     assert sleeps == [1, 2]  # no sleep after the last attempt
 
 
-@todo(2, "executor.execute_run (non-retryable)")
 async def test_non_retryable_node_runs_once(db, fake_sleep, sleeps):
     run_id = await make_run(db, chain_graph(("n1", "test.fail_no_retry", {})))
     run = await execute_run(db, run_id, sleep=fake_sleep)
@@ -72,7 +70,6 @@ async def test_non_retryable_node_runs_once(db, fake_sleep, sleeps):
     assert sleeps == []
 
 
-@todo(2, "executor.execute_run (bad template)")
 async def test_bad_template_fails_the_node(db, fake_sleep):
     run_id = await make_run(db, chain_graph(("n1", "test.echo", {"x": "{{ghost.output.y}}"})))
     run = await execute_run(db, run_id, sleep=fake_sleep)
@@ -80,7 +77,6 @@ async def test_bad_template_fails_the_node(db, fake_sleep):
     assert "TemplateError" in (await steps_of(db, run_id))[0].error
 
 
-@todo(2, "executor.execute_run")
 async def test_unknown_run_raises(db, fake_sleep):
     with pytest.raises(NotFound):
         await execute_run(db, uuid.uuid4(), sleep=fake_sleep)
