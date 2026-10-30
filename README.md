@@ -67,18 +67,18 @@ Finish line: **31 passed, 0 xfailed.**
 ## Build plan
 
 ### Week 1: the running order
-- [ ] `topological_sort` (Kahn's algorithm). Read the docstring, then write it without looking anything up first
-- [ ] `upstream_of`
-- [ ] All `test_graph.py` tests pass, plus `test_cycle_is_rejected_before_queueing`
-- [ ] Explain in this README: why O(V + E)? What happens with a cycle?
+- [ ✔️] `topological_sort` (Kahn's algorithm). Read the docstring, then write it without looking anything up first
+- [✔️ ] `upstream_of`
+- [ ✔️] All `test_graph.py` tests pass, plus `test_cycle_is_rejected_before_queueing`
+- [✔️ ] Explain in this README: why O(V + E)? What happens with a cycle?
 
 ### Week 2: the engine
-- [ ] `templating.render` and `lookup`
-- [ ] `queue.enqueue_run` / `dequeue_run`
-- [ ] `executor.execute_run` with retries (1s, 2s, 4s backoff)
-- [ ] `worker.process_one`
-- [ ] All 31 tests pass. Then run `docker compose up --scale worker=2` and start two runs at once
-- [ ] Explain: what happens if the worker crashes in the middle of a run? (There's a real gap here. Find it and write it down.)
+- [✔️ ] `templating.render` and `lookup`
+- [✔️ ] `queue.enqueue_run` / `dequeue_run`
+- [ ✔️] `executor.execute_run` with retries (1s, 2s, 4s backoff)
+- [ ✔️] `worker.process_one`
+- [ ✔️] All 31 tests pass. Then run `docker compose up --scale worker=2` and start two runs at once
+- [ ✔️] Explain: what happens if the worker crashes in the middle of a run? (There's a real gap here. Find it and write it down.)
 
 ### Week 3: AI and the outside world
 - [ ] `llm.prompt` node: timeout, structured JSON output, one repair retry, tokens and cost logged
