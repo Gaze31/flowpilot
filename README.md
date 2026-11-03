@@ -1,103 +1,79 @@
 # FlowPilot
 
-**A visual AI workflow builder.** Connect blocks (Trigger → AI step → Action) on a canvas, and FlowPilot runs them in the background with retries, then logs every step's input, output, time and cost.
+**A workflow automation engine, like a small n8n or Zapier, built from scratch in Python.**
 
-Demo workflow: *every morning, read my unread emails → AI picks the urgent ones → send me a WhatsApp summary.*
+You connect steps (a trigger, then an AI step, then an action), and FlowPilot works out the right order, runs them in the background, retries what fails, and logs every attempt.
 
-> Status: **scaffold.** The API, database, Docker, CI and tests are done. The engine (the interesting part) is yours to build, week by week. Unfinished endpoints reply **HTTP 501 and name the file to open.**
+Example workflow: *every morning, read my unread emails → AI picks the urgent ones → send me a summary.*
 
-## Architecture
+![tests](https://img.shields.io/badge/tests-31%20passing-brightgreen)
+
+## Status
+
+| Part | State |
+|---|---|
+| Workflow API (create, read, update, delete) | ✅ Done |
+| Running order (topological sort, cycle detection) | ✅ Done |
+| Passing data between steps (`{{n1.output.x}}` templates) | ✅ Done |
+| Redis job queue + background worker | ✅ Done |
+| Executor with retries, backoff and per-attempt logs | ✅ Done |
+| LLM step (timeout, structured JSON output, repair retry) | 🚧 In progress |
+| HTTP and email actions, scheduled triggers | ⏳ Next |
+| Visual canvas (Next.js + React Flow) | ⏳ Planned |
+
+**31 tests pass in GitHub Actions CI**, with lint and format checks on every push.
+
+## How it works
 
 ```mermaid
 flowchart LR
-    UI[Next.js + React Flow canvas] -- REST --> API[FastAPI]
-    API -- save graph, runs, step logs --> PG[(PostgreSQL)]
+    API[FastAPI] -- save workflow, runs, step logs --> PG[(PostgreSQL)]
     API -- LPUSH run id --> Q[(Redis queue)]
     Q -- BRPOP --> W[Worker]
-    W -- topological sort, run nodes, retry --> W
-    W -- step logs --> PG
-    W -- LLM / HTTP / email --> EXT[Outside world]
+    W -- sort steps, run, retry --> W
+    W -- one row per attempt --> PG
 ```
 
-**Why a queue and a worker?** A run can take minutes (LLM calls, retries with waits). The API answers in milliseconds by only queueing the run; the worker does the slow part. To handle more runs, start more workers.
+1. **Start a run:** the API checks that the workflow has no loops, saves a run as `queued`, puts its id on a Redis queue and replies straight away (HTTP 202).
+2. **The worker** takes the next run id off the queue and runs the steps in order.
+3. **Each step:** fill in its templates from earlier steps' outputs, run it, and save the result. If it fails, wait (1s, then 2s) and try again, up to 3 attempts.
+4. **The run ends** as `succeeded`, or as `failed` with the step that broke and why.
+
+## Design decisions
+
+**Why a queue and a separate worker?**
+A run can take minutes (LLM calls, retries with waits). The API only queues the run id, so it replies in milliseconds. To handle more runs, start more workers: they all share one queue.
+
+**Why put only the run id on the queue, not the whole workflow?**
+The database is the single source of truth. The worker always loads the latest saved version, and the queue messages stay tiny.
+
+**Running order: Kahn's algorithm, O(V + E)**
+Count how many arrows point into each step. Steps with zero are ready, so run one, then remove its outgoing arrows; any step that drops to zero becomes ready. Every step and every arrow is handled once, which makes it O(V + E).
+If the sort finishes with fewer steps than the workflow has, there's a loop (for example, B waits for D and D waits for B). The API rejects it with **HTTP 422** before anything is queued.
+
+**Retries: what gets retried, and what doesn't**
+- Failed attempts wait 1s, then 2s (exponential backoff), with no wait after the last attempt.
+- Steps with side effects (such as sending an email) are marked **non-retryable** and run once, so a retry can never send the same email twice.
+- Success handling is in a separate `else` block, so an error while *saving* a result is never mistaken for the step failing.
+- The wait function is passed in as a parameter, so tests check the exact waits (`[1, 2]`) without actually sleeping.
+
+**Known gap: a worker crash in the middle of a run**
+`BRPOP` removes the run id from Redis as soon as a worker takes it. If that worker crashes halfway through, the run stays `running` forever, and no other worker will pick it up.
+Planned fix: move the id to a "processing" list instead of deleting it (`LMOVE`), remove it only when the run finishes, and have a small reaper re-queue runs that have been `running` for too long.
 
 ## Run it
 
 ```bash
-# tests: no Postgres or Redis needed (SQLite + fake Redis)
 cd backend
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements-dev.txt
-python -m pytest -q          # starts at: 7 passed, 24 xfailed
+python -m pytest -q        # 31 passed (uses SQLite + a fake Redis, so no services needed)
 
-# full stack in Docker
+# full stack with Docker
 cd ..
-docker compose up --build    # API docs: http://localhost:8000/docs
-# first time only, in another terminal:
-docker compose exec api alembic revision --autogenerate -m "initial tables"
-docker compose exec api alembic upgrade head
+docker compose up --build  # API docs at http://localhost:8000/docs
 ```
 
-Commit the migration file Alembic creates in `backend/alembic/versions/`.
+## Tech
 
-## How the tests guide you
-
-Tests for unwritten code are marked `@todo(week, "...")`. Each one shows its state:
-
-| You see | Meaning | Do |
-|---|---|---|
-| `x` (xfailed) | Your function still raises `NotImplementedError` | Write it |
-| `F` (failed) | You wrote it, but it's wrong | Read the assertion, fix it |
-| `XPASS(strict)` | It's correct | **Delete the `@todo(...)` line above that test** |
-
-Finish line: **31 passed, 0 xfailed.**
-
-## Done vs your TODOs
-
-| Done (read and understand it) | Your TODOs |
-|---|---|
-| `models.py`: workflows, runs, step_runs | **Week 1:** `engine/graph.py`: `topological_sort`, `upstream_of` |
-| `schemas.py`: graph shape validation | **Week 2:** `engine/templating.py`: `{{n1.output.x}}` |
-| `api/workflows.py`: CRUD | **Week 2:** `engine/queue.py`: Redis LPUSH/BRPOP |
-| `api/runs.py`: start run, run history | **Week 2:** `engine/executor.py`: order, retries, backoff, logs |
-| `engine/nodes/base.py`: node registry | **Week 2:** `worker.py`: `process_one` |
-| Docker Compose, Alembic, CI, error handling | **Week 3:** `nodes/llm.py`, `nodes/actions.py`, schedule trigger |
-| | **Week 4:** frontend (React Flow canvas, run history) |
-
-## Build plan
-
-### Week 1: the running order
-- [ ✔️] `topological_sort` (Kahn's algorithm). Read the docstring, then write it without looking anything up first
-- [✔️ ] `upstream_of`
-- [ ✔️] All `test_graph.py` tests pass, plus `test_cycle_is_rejected_before_queueing`
-- [✔️ ] Explain in this README: why O(V + E)? What happens with a cycle?
-
-### Week 2: the engine
-- [✔️ ] `templating.render` and `lookup`
-- [✔️ ] `queue.enqueue_run` / `dequeue_run`
-- [ ✔️] `executor.execute_run` with retries (1s, 2s, 4s backoff)
-- [ ✔️] `worker.process_one`
-- [ ✔️] All 31 tests pass. Then run `docker compose up --scale worker=2` and start two runs at once
-- [ ✔️] Explain: what happens if the worker crashes in the middle of a run? (There's a real gap here. Find it and write it down.)
-
-### Week 3: AI and the outside world
-- [ ] `llm.prompt` node: timeout, structured JSON output, one repair retry, tokens and cost logged
-- [ ] `action.http` (retry 5xx, not 4xx), `action.email` (never retried: why?)
-- [ ] Schedule trigger + a small scheduler process
-- [ ] Tests with fake clients only. Never call real APIs in tests
-
-### Week 4: frontend
-- [ ] Next.js + React Flow canvas: add blocks, connect them, edit config in a side panel
-- [ ] Save/load workflows, a Run button, live status (polling `GET /runs/{id}`)
-- [ ] Run history page: each step's input, output, error, time and cost
-
-### Week 5: ship it
-- [ ] Deploy (API + worker + Postgres + Redis; frontend on Vercel)
-- [ ] The demo workflow working end to end
-- [ ] Screenshots, a 2-minute Loom, and the results below
-
-## Results (fill in as you build; these become resume bullets)
-- Tests: __ passing in CI
-- Runs executed: __ · average run time: __ s
-- Failed steps recovered by retry: __ %
-- LLM cost per run: $__
+Python 3.12 · FastAPI · async SQLAlchemy · PostgreSQL · Alembic · Redis · Docker Compose · pytest · ruff · GitHub Actions
