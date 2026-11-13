@@ -11,3 +11,7 @@ class CycleError(Exception):
 
 class TemplateError(Exception):
     """A {{...}} reference points at something that doesn't exist. Fails the node."""
+
+
+class NonRetryableError(Exception):
+    """A failure that trying again can't fix (e.g. HTTP 4xx). The executor stops retrying."""

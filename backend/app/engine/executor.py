@@ -17,7 +17,10 @@ from app.core.config import get_settings
 from app.engine.graph import topological_sort  # noqa: F401
 from app.engine.nodes import get_node  # noqa: F401
 from app.engine.templating import render  # noqa: F401
-from app.errors import NotFound  # noqa: F401
+from app.errors import (
+    NonRetryableError,
+    NotFound,  # noqa: F401
+)
 from app.models import Run, RunStatus, StepRun, StepStatus, Workflow  # noqa: F401
 
 Sleep = Callable[[float], Awaitable[None]]
@@ -116,7 +119,7 @@ async def execute_run(db: AsyncSession, run_id: uuid.UUID, sleep: Sleep = asynci
                 )
 
                 # Check if we have more retries left in the quota
-                if attempt < max_tries:
+                if attempt < max_tries and not isinstance(exc, NonRetryableError):
                     await sleep(backoff_seconds(attempt))
                     continue
 
