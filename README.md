@@ -6,7 +6,7 @@ You connect steps (a trigger, then an AI step, then an action), and FlowPilot wo
 
 Example workflow: *every morning, read my unread emails → AI picks the urgent ones → send me a summary.*
 
-![tests](https://img.shields.io/badge/tests-31%20passing-brightgreen)
+![tests](https://img.shields.io/badge/tests-37%20passing-brightgreen)
 
 ## Status
 
@@ -17,11 +17,11 @@ Example workflow: *every morning, read my unread emails → AI picks the urgent 
 | Passing data between steps (`{{n1.output.x}}` templates) | ✅ Done |
 | Redis job queue + background worker | ✅ Done |
 | Executor with retries, backoff and per-attempt logs | ✅ Done |
-| LLM step (timeout, structured JSON output, repair retry) | 🚧 In progress |
+| LLM step (timeout, structured JSON output, repair retry) | ✅ Done |
 | HTTP and email actions, scheduled triggers | ⏳ Next |
 | Visual canvas (Next.js + React Flow) | ⏳ Planned |
 
-**31 tests pass in GitHub Actions CI**, with lint and format checks on every push.
+**37 tests pass in GitHub Actions CI**, with lint and format checks on every push.
 
 ## How it works
 
@@ -57,6 +57,13 @@ If the sort finishes with fewer steps than the workflow has, there's a loop (for
 - Success handling is in a separate `else` block, so an error while *saving* a result is never mistaken for the step failing.
 - The wait function is passed in as a parameter, so tests check the exact waits (`[1, 2]`) without actually sleeping.
 
+**LLM step: guardrails, because models don't always follow instructions**
+- **Structured output:** if the step has an `output_schema`, the prompt asks for JSON in that exact shape, and the reply is checked with `json.loads` (Markdown code fences around the JSON are stripped first).
+- **One repair retry:** if the reply isn't valid JSON, the step asks once more with "Reply with only JSON." If that fails too, it raises an error instead of looping, so a bad model can't burn tokens forever.
+- **Timeout:** every call is wrapped in `asyncio.wait_for` (30s by default). A slow model raises a `TimeoutError`, and the executor retries the step with backoff like any other failure.
+- **Cost tracking:** tokens and cost are added up across both calls, so the repair retry is never hidden.
+- **Testable without an API key:** the model is plugged in with `set_llm_client()`, so the 6 LLM tests use a fake model that is free, instant and always gives the same answer.
+
 **Known gap: a worker crash in the middle of a run**
 `BRPOP` removes the run id from Redis as soon as a worker takes it. If that worker crashes halfway through, the run stays `running` forever, and no other worker will pick it up.
 Planned fix: move the id to a "processing" list instead of deleting it (`LMOVE`), remove it only when the run finishes, and have a small reaper re-queue runs that have been `running` for too long.
@@ -67,7 +74,7 @@ Planned fix: move the id to a "processing" list instead of deleting it (`LMOVE`)
 cd backend
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements-dev.txt
-python -m pytest -q        # 31 passed (uses SQLite + a fake Redis, so no services needed)
+python -m pytest -q        # 37 passed (uses SQLite + a fake Redis, so no services needed)
 
 # full stack with Docker
 cd ..
