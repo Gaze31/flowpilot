@@ -6,7 +6,7 @@ You connect steps (a trigger, then an AI step, then an action), and FlowPilot wo
 
 Example workflow: *every morning, read my unread emails → AI picks the urgent ones → send me a summary.*
 
-![tests](https://img.shields.io/badge/tests-46%20passing-brightgreen)
+![tests](https://img.shields.io/badge/tests-52%20passing-brightgreen)
 
 ## Status
 
@@ -20,10 +20,10 @@ Example workflow: *every morning, read my unread emails → AI picks the urgent 
 | LLM step (timeout, structured JSON output, repair retry) | ✅ Done |
 | HTTP action (retries 5xx, never retries 4xx) | ✅ Done |
 | Email action (never retried, so no duplicate emails) | ✅ Done |
-| Scheduled triggers | ⏳ Next |
+| Scheduled triggers (cron, never fires the same minute twice) | ✅ Done |
 | Visual canvas (Next.js + React Flow) | ⏳ Planned |
 
-**46 tests pass in GitHub Actions CI**, with lint and format checks on every push.
+**52 tests pass in GitHub Actions CI**, with lint and format checks on every push.
 
 ## How it works
 
@@ -74,6 +74,12 @@ If the sort finishes with fewer steps than the workflow has, there's a loop (for
 **Email step: why it is never retried (idempotency)**
 If the email server sends the message but the connection drops before we hear back, the step looks like it failed. Retrying would send the same email twice, which is worse than failing once. So the email step is marked non-retryable and runs exactly once; if it fails, the run fails and the log shows why. The address is checked before anything is sent, and the sender is plugged in with `set_email_sender()`, so tests use a fake that records emails instead of sending them.
 
+**Scheduler: what stops it from starting the same workflow twice in one minute?**
+A small separate process wakes up once a minute, finds workflows whose `trigger.schedule` cron (for example `0 8 * * *`, every day at 08:00 UTC) matches the current minute, and starts them exactly like the "start run" API does, so the same worker executes them.
+- Before starting a workflow it claims a Redis key for that workflow and minute with `SET ... NX EX 120`. `NX` means "only if it doesn't exist yet", and Redis does this atomically, so even two schedulers running at once can't both win. Waking up twice in the same minute starts the run only once.
+- A workflow with a broken cron is logged and skipped, so one bad schedule can't stop the others.
+- The current time is passed in as a parameter, so tests can say "it's 08:00" without waiting for a real clock.
+
 **Known gap: a worker crash in the middle of a run**
 `BRPOP` removes the run id from Redis as soon as a worker takes it. If that worker crashes halfway through, the run stays `running` forever, and no other worker will pick it up.
 Planned fix: move the id to a "processing" list instead of deleting it (`LMOVE`), remove it only when the run finishes, and have a small reaper re-queue runs that have been `running` for too long.
@@ -84,13 +90,16 @@ Planned fix: move the id to a "processing" list instead of deleting it (`LMOVE`)
 cd backend
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements-dev.txt
-python -m pytest -q        # 46 passed (uses SQLite + a fake Redis, so no services needed)
+python -m pytest -q        # 52 passed (uses SQLite + a fake Redis, so no services needed)
 
 # full stack with Docker
 cd ..
 docker compose up --build  # API docs at http://localhost:8000/docs
+
+# scheduler (starts workflows that have a cron trigger)
+cd backend && python -m app.engine.scheduler
 ```
 
 ## Tech
 
-Python 3.12 · FastAPI · async SQLAlchemy · PostgreSQL · Alembic · Redis · Docker Compose · pytest · ruff · GitHub Actions
+Python 3.12 · FastAPI · async SQLAlchemy · PostgreSQL · Alembic · Redis · httpx · croniter · Docker Compose · pytest · ruff · GitHub Actions
