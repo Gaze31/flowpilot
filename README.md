@@ -6,7 +6,7 @@ You connect steps (a trigger, then an AI step, then an action), and FlowPilot wo
 
 Example workflow: *every morning, read my unread emails → AI picks the urgent ones → send me a summary.*
 
-![tests](https://img.shields.io/badge/tests-42%20passing-brightgreen)
+![tests](https://img.shields.io/badge/tests-46%20passing-brightgreen)
 
 ## Status
 
@@ -19,10 +19,11 @@ Example workflow: *every morning, read my unread emails → AI picks the urgent 
 | Executor with retries, backoff and per-attempt logs | ✅ Done |
 | LLM step (timeout, structured JSON output, repair retry) | ✅ Done |
 | HTTP action (retries 5xx, never retries 4xx) | ✅ Done |
-| Email action, scheduled triggers | ⏳ Next |
+| Email action (never retried, so no duplicate emails) | ✅ Done |
+| Scheduled triggers | ⏳ Next |
 | Visual canvas (Next.js + React Flow) | ⏳ Planned |
 
-**42 tests pass in GitHub Actions CI**, with lint and format checks on every push.
+**46 tests pass in GitHub Actions CI**, with lint and format checks on every push.
 
 ## How it works
 
@@ -70,6 +71,9 @@ If the sort finishes with fewer steps than the workflow has, there's a loop (for
 - **4xx** (400, 404) means the request itself is wrong. Sending the same request again will fail the same way, so the step raises a `NonRetryableError` and the executor stops at once, with no waiting.
 - Every request has a 10s timeout. Tests use `httpx.MockTransport` as a fake server, so no real URL is ever called. One test runs the whole executor and checks a 404 is sent exactly once.
 
+**Email step: why it is never retried (idempotency)**
+If the email server sends the message but the connection drops before we hear back, the step looks like it failed. Retrying would send the same email twice, which is worse than failing once. So the email step is marked non-retryable and runs exactly once; if it fails, the run fails and the log shows why. The address is checked before anything is sent, and the sender is plugged in with `set_email_sender()`, so tests use a fake that records emails instead of sending them.
+
 **Known gap: a worker crash in the middle of a run**
 `BRPOP` removes the run id from Redis as soon as a worker takes it. If that worker crashes halfway through, the run stays `running` forever, and no other worker will pick it up.
 Planned fix: move the id to a "processing" list instead of deleting it (`LMOVE`), remove it only when the run finishes, and have a small reaper re-queue runs that have been `running` for too long.
@@ -80,7 +84,7 @@ Planned fix: move the id to a "processing" list instead of deleting it (`LMOVE`)
 cd backend
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements-dev.txt
-python -m pytest -q        # 42 passed (uses SQLite + a fake Redis, so no services needed)
+python -m pytest -q        # 46 passed (uses SQLite + a fake Redis, so no services needed)
 
 # full stack with Docker
 cd ..
