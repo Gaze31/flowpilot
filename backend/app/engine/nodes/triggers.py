@@ -20,17 +20,9 @@ class ManualTrigger(Node):
 
 @register
 class ScheduleTrigger(Node):
-    """Config: {"cron": "0 8 * * *"} (every day at 08:00).
-
-    TODO (Week 3):
-      The node's run() can just return {"triggered_at": ...} like ManualTrigger.
-      The real work is a small scheduler process that, every minute, finds workflows whose
-      trigger node is "trigger.schedule" and whose cron matches now, then creates a Run and
-      enqueues it (same as POST /workflows/{id}/runs). Look at the `croniter` package.
-      Question to answer in your README: what stops the scheduler from firing the same minute twice?
-    """
+    """Config: {"cron": "0 8 * * *"} (every day at 08:00).The scheduler decides WHEN it runs."""
 
     type = "trigger.schedule"
 
     async def run(self, config: dict[str, Any], context: dict[str, Any]) -> dict[str, Any]:
-        raise NotImplementedError("trigger.schedule: see TODO in app/engine/nodes/triggers.py")
+        return {"cron": config.get("cron"), "triggered_at": datetime.now(UTC).isoformat()}
