@@ -9,8 +9,9 @@ If a worker dies mid-run, the run stays on the processing list and the reaper re
 import asyncio
 import logging
 
-from app.db.session import SessionLocal  # noqa: F401
-from app.engine.executor import execute_run  # noqa: F401
+from app.db.session import SessionLocal
+from app.engine.executor import execute_run
+from app.engine.providers import plug_in_providers
 from app.engine.queue import ack_run, dequeue_run
 
 log = logging.getLogger("flowpilot.worker")
@@ -40,6 +41,7 @@ async def process_one(timeout: int = 5) -> bool:
 async def main() -> None:
     """Loop forever."""
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
+    plug_in_providers()
     log.info("worker started, waiting for runs")
     while True:
         await process_one()
