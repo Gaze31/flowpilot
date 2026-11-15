@@ -11,6 +11,7 @@ from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime  # noqa: F401
 from typing import Any
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
@@ -87,8 +88,15 @@ async def execute_run(db: AsyncSession, run_id: uuid.UUID, sleep: Sleep = asynci
     nodes_by_id = {n["id"]: n for n in workflow.graph["nodes"]}
     context = {}  # Filled dynamically: context[node_id] = {"output": output}
 
+    # A rescued run may already have finished some steps before its worker died: reuse them
+    done = await db.scalars(select(StepRun).where(StepRun.run_id == run.id, StepRun.status == StepStatus.SUCCEEDED))
+    finished = {step.node_id: step.output for step in done}
+
     # 4. Iterate over execution pipeline in dependency order
     for node_id in order:
+        if node_id in finished:
+            context[node_id] = {"output": finished[node_id]}
+            continue
         node = nodes_by_id[node_id]
         impl = get_node(node["type"])
 
