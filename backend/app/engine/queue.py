@@ -1,13 +1,14 @@
-"""The job queue between the API and the worker. WEEK 2 TODO.
+"""The job queue between the API and the worker. Done.
 
 Why a queue? The API must reply in milliseconds, but a workflow can take seconds or
 minutes (LLM calls, retries with waits). So the API only drops the run id into Redis,
 and a separate worker process picks it up. Several workers can share one queue.
 
-We use a plain Redis LIST (no extra library), so you can see exactly what happens:
-    enqueue: LPUSH queue_name run_id      (add to the left end)
-    dequeue: BRPOP queue_name timeout     (take from the right end; waits if empty)
-LPUSH + BRPOP = first in, first out.
+Two Redis lists:
+enqueue: LPUSH queue run_id                  (add to the left end)
+dequeue: BLMOVE queue -> processing (atomic) (take from the right end)
+ack: LREM processing run_id                   (the run is finished)
+If a worker dies mid-run, its run id stays in `processing`, so the reaper can find it.
 """
 
 import uuid
@@ -32,34 +33,36 @@ def set_redis(client: Redis) -> None:
     _client = client
 
 
+def processing_name() -> str:
+    """The second list: run ids a worker has taken but not finished yet."""
+    return f"{get_settings().queue_name}: processing"
+
+
 async def enqueue_run(run_id: uuid.UUID) -> None:
-    """TODO (Week 2): LPUSH the run id (as a string) onto settings.queue_name."""
+    """Add a run id to the left end of the queue."""
     settings = get_settings()
     redis_client = get_redis()
-
     # LPUSH the run id as a string to the left end of the list
     await redis_client.lpush(settings.queue_name, str(run_id))
 
 
 async def dequeue_run(timeout: int = 5) -> uuid.UUID | None:
-    """Wait up to `timeout` seconds for the next run id.
+    """wait up to `timeout` seconds for the next run id, and MOVE it to the processing list.
 
-    TODO (Week 2): BRPOP settings.queue_name with the timeout.
-      - It returns None if nothing arrived in time -> return None.
-      - Otherwise it returns (queue_name, value) -> return uuid.UUID(value).
+    Returns None if nothing arrived in time.
     """
     settings = get_settings()
     redis_client = get_redis()
+    # BLMOVE: take from the right end of the queue and put it on the processing list,
+    # in one atomic step, so the run id is never lost between the two lists
+    value = await redis_client.blmove(settings.queue_name, processing_name(), timeout, "RIGHT", "LEFT")
 
-    # BRPOP blocks until an item is available or the timeout is hit
-    result = await redis_client.brpop(settings.queue_name, timeout)
-
-    # If the timeout expires without an item, Redis returns None
-    if result is None:
+    if value is None:
         return None
 
-    # BRPOP returns a tuple: (queue_name, value)
-    _, value = result
-
-    # Convert the string value back into a uuid.UUID object
     return uuid.UUID(value)
+
+
+async def ack_run(run_id: uuid.UUID) -> None:
+    """The run is finished: remove it from the processing list."""
+    await get_redis().lrem(processing_name(), 1, str(run_id))

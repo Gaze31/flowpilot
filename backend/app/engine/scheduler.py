@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import SessionLocal
 from app.engine import queue
+from app.engine.reaper import requeue_stuck_runs
 from app.models import Run, Workflow
 
 log = logging.getLogger("flowpilot.scheduler")
@@ -67,8 +68,11 @@ async def main() -> None:
     while True:
         async with SessionLocal() as db:
             started = await fire_due_workflows(db, datetime.now(UTC))
+            requeued = await requeue_stuck_runs(db, datetime.now(UTC))
         if started:
             log.info("started %d scheduled run(s)", len(started))
+        if requeued:
+            log.info("requeued %d stuck run(s)", len(requeued))
         await asyncio.sleep(60 - datetime.now(UTC).second)
 
 

@@ -3,6 +3,7 @@
 Start it with:  python -m app.worker
 In docker-compose it runs as its own service next to the API. Run 2 of them to see
 two runs execute at the same time (that's horizontal scaling, an interview favourite).
+If a worker dies mid-run, the run stays on the processing list and the reaper requeues it.
 """
 
 import asyncio
@@ -10,7 +11,7 @@ import logging
 
 from app.db.session import SessionLocal  # noqa: F401
 from app.engine.executor import execute_run  # noqa: F401
-from app.engine.queue import dequeue_run
+from app.engine.queue import ack_run, dequeue_run
 
 log = logging.getLogger("flowpilot.worker")
 
@@ -22,6 +23,7 @@ async def process_one(timeout: int = 5) -> bool:
     if run_id is None:
         log.info("no runs in queue, waiting...")
         return False
+
     async with SessionLocal() as db:
         try:
             log.info("starting run %s", run_id)
@@ -29,12 +31,14 @@ async def process_one(timeout: int = 5) -> bool:
             log.info("finished run %s", run_id)
         except Exception:
             log.exception("run %s crashed", run_id)
+        finally:
+            await ack_run(run_id)
 
-        return True
+    return True
 
 
 async def main() -> None:
-    """Loop forever. Done (once process_one works)."""
+    """Loop forever."""
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
     log.info("worker started, waiting for runs")
     while True:
