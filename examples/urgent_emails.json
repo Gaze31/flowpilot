@@ -1,0 +1,27 @@
+{
+  "name": "Urgent email digest",
+  "graph": {
+    "nodes": [
+      {"id": "n1", "type": "trigger.manual", "config": {"payload": {"emails": [
+        "Server is down! Customers can't log in.",
+        "Lunch on Friday?",
+        "Client meeting moved to 10am tomorrow",
+        "Weekly newsletter: 5 tips for productivity"
+      ]}}},
+      {"id": "n2", "type": "llm.prompt", "config": {
+        "prompt": "From these emails, list the urgent ones: {{n1.output.payload.emails}}",
+        "output_schema": {"urgent": "list[str]"},
+        "max_tokens": 2000
+      }},
+      {"id": "n3", "type": "action.email", "config": {
+        "to": "me@example.com",
+        "subject": "Urgent emails",
+        "body": "Urgent: {{n2.output.json.urgent}}"
+      }}
+    ],
+    "edges": [
+      {"source": "n1", "target": "n2"},
+      {"source": "n2", "target": "n3"}
+    ]
+  }
+}

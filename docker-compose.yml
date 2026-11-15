@@ -5,7 +5,7 @@ services:
       POSTGRES_USER: flowpilot
       POSTGRES_PASSWORD: flowpilot
       POSTGRES_DB: flowpilot
-    ports: ["5432:5432"]
+    ports: ["5433:5432"]
     volumes: [pgdata:/var/lib/postgresql/data]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U flowpilot"]
@@ -29,11 +29,23 @@ services:
   worker:
     build: ./backend
     command: python -m app.worker
+    restart: unless-stopped
+    env_file: ./backend/.env
     environment:
       DATABASE_URL: postgresql+asyncpg://flowpilot:flowpilot@db:5432/flowpilot
       REDIS_URL: redis://redis:6379/0
     depends_on: [api]
-    # Week 2 experiment: `docker compose up --scale worker=2` and start two runs at once
+    # Try `docker compose up --scale worker=2` and start two runs at once
+
+  scheduler:
+    build: ./backend
+    command: python -m app.engine.scheduler
+    restart: unless-stopped
+    env_file: ./backend/.env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://flowpilot:flowpilot@db:5432/flowpilot
+      REDIS_URL: redis://redis:6379/0
+    depends_on: [api]
 
 volumes:
   pgdata:

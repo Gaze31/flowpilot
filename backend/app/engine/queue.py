@@ -24,7 +24,7 @@ def get_redis() -> Redis:
     """One shared client per process. Tests replace it with a fake Redis via set_redis()."""
     global _client
     if _client is None:
-        _client = Redis.from_url(get_settings().redis_url, decode_responses=True)
+        _client = Redis.from_url(get_settings().redis_url, decode_responses=True, socket_timeout=10)
     return _client
 
 
