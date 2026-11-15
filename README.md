@@ -6,7 +6,7 @@ You connect steps (a trigger, then an AI step, then an action), and FlowPilot wo
 
 Example workflow: *every morning, read my unread emails → AI picks the urgent ones → send me a summary.*
 
-![tests](https://img.shields.io/badge/tests-52%20passing-brightgreen)
+![tests](https://img.shields.io/badge/tests-57%20passing-brightgreen)
 
 ## Status
 
@@ -21,9 +21,10 @@ Example workflow: *every morning, read my unread emails → AI picks the urgent 
 | HTTP action (retries 5xx, never retries 4xx) | ✅ Done |
 | Email action (never retried, so no duplicate emails) | ✅ Done |
 | Scheduled triggers (cron, never fires the same minute twice) | ✅ Done |
+| Crash recovery (processing list + reaper) | ✅ Done |
 | Visual canvas (Next.js + React Flow) | ⏳ Planned |
 
-**52 tests pass in GitHub Actions CI**, with lint and format checks on every push.
+**57 tests pass in GitHub Actions CI**, with lint and format checks on every push.
 
 ## How it works
 
@@ -31,13 +32,15 @@ Example workflow: *every morning, read my unread emails → AI picks the urgent 
 flowchart LR
     API[FastAPI] -- save workflow, runs, step logs --> PG[(PostgreSQL)]
     API -- LPUSH run id --> Q[(Redis queue)]
-    Q -- BRPOP --> W[Worker]
+    Q -- BLMOVE --> P[(processing list)]
+    P --> W[Worker]
     W -- sort steps, run, retry --> W
     W -- one row per attempt --> PG
+    W -- ack when done --> P
 ```
 
 1. **Start a run:** the API checks that the workflow has no loops, saves a run as `queued`, puts its id on a Redis queue and replies straight away (HTTP 202).
-2. **The worker** takes the next run id off the queue and runs the steps in order.
+2. **The worker** moves the next run id from the queue to a processing list, runs the steps in order, and removes the id (an "ack") when the run is finished.
 3. **Each step:** fill in its templates from earlier steps' outputs, run it, and save the result. If it fails, wait (1s, then 2s) and try again, up to 3 attempts.
 4. **The run ends** as `succeeded`, or as `failed` with the step that broke and why.
 
@@ -80,9 +83,12 @@ A small separate process wakes up once a minute, finds workflows whose `trigger.
 - A workflow with a broken cron is logged and skipped, so one bad schedule can't stop the others.
 - The current time is passed in as a parameter, so tests can say "it's 08:00" without waiting for a real clock.
 
-**Known gap: a worker crash in the middle of a run**
-`BRPOP` removes the run id from Redis as soon as a worker takes it. If that worker crashes halfway through, the run stays `running` forever, and no other worker will pick it up.
-Planned fix: move the id to a "processing" list instead of deleting it (`LMOVE`), remove it only when the run finishes, and have a small reaper re-queue runs that have been `running` for too long.
+**Crash recovery: what if a worker dies in the middle of a run?**
+- The worker takes a run id with `BLMOVE`, which moves it from the queue to a `processing` list in one atomic step, instead of deleting it. When the run finishes (succeeded or failed), the worker removes it in a `finally` block (the "ack").
+- If the worker dies, the ack never happens, so the id stays on the processing list. That missing ack is the signal.
+- Once a minute, a reaper checks that list: a run that is already finished is just cleaned up (never run again); a run that has been `running` for less than 15 minutes is left alone; a run older than that is reset to `queued` and put back on the queue for another worker.
+
+**Known limitation:** a requeued run starts again from the first step. If a worker died after an email step had already sent, that email could go out twice. The next step is to have the executor skip steps that already succeeded in that run, so a rescued run resumes where it stopped.
 
 ## Run it
 
@@ -90,7 +96,7 @@ Planned fix: move the id to a "processing" list instead of deleting it (`LMOVE`)
 cd backend
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements-dev.txt
-python -m pytest -q        # 52 passed (uses SQLite + a fake Redis, so no services needed)
+python -m pytest -q        # 57 passed (uses SQLite + a fake Redis, so no services needed)
 
 # full stack with Docker
 cd ..
