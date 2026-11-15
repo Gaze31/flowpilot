@@ -6,7 +6,7 @@ You connect steps (a trigger, then an AI step, then an action), and FlowPilot wo
 
 Example workflow: *every morning, read my unread emails → AI picks the urgent ones → send me a summary.*
 
-![tests](https://img.shields.io/badge/tests-57%20passing-brightgreen)
+![tests](https://img.shields.io/badge/tests-58%20passing-brightgreen)
 
 ## Status
 
@@ -21,10 +21,10 @@ Example workflow: *every morning, read my unread emails → AI picks the urgent 
 | HTTP action (retries 5xx, never retries 4xx) | ✅ Done |
 | Email action (never retried, so no duplicate emails) | ✅ Done |
 | Scheduled triggers (cron, never fires the same minute twice) | ✅ Done |
-| Crash recovery (processing list + reaper) | ✅ Done |
+| Crash recovery (processing list, reaper, resume from the last finished step) | ✅ Done |
 | Visual canvas (Next.js + React Flow) | ⏳ Planned |
 
-**57 tests pass in GitHub Actions CI**, with lint and format checks on every push.
+**58 tests pass in GitHub Actions CI**, with lint and format checks on every push.
 
 ## How it works
 
@@ -32,6 +32,7 @@ Example workflow: *every morning, read my unread emails → AI picks the urgent 
 flowchart LR
     API[FastAPI] -- save workflow, runs, step logs --> PG[(PostgreSQL)]
     API -- LPUSH run id --> Q[(Redis queue)]
+    S[Scheduler] -- cron is due --> Q
     Q -- BLMOVE --> P[(processing list)]
     P --> W[Worker]
     W -- sort steps, run, retry --> W
@@ -39,7 +40,7 @@ flowchart LR
     W -- ack when done --> P
 ```
 
-1. **Start a run:** the API checks that the workflow has no loops, saves a run as `queued`, puts its id on a Redis queue and replies straight away (HTTP 202).
+1. **Start a run:** the API (or the scheduler, when a cron is due) checks that the workflow has no loops, saves a run as `queued`, puts its id on a Redis queue and replies straight away (HTTP 202).
 2. **The worker** moves the next run id from the queue to a processing list, runs the steps in order, and removes the id (an "ack") when the run is finished.
 3. **Each step:** fill in its templates from earlier steps' outputs, run it, and save the result. If it fails, wait (1s, then 2s) and try again, up to 3 attempts.
 4. **The run ends** as `succeeded`, or as `failed` with the step that broke and why.
@@ -67,7 +68,7 @@ If the sort finishes with fewer steps than the workflow has, there's a loop (for
 - **One repair retry:** if the reply isn't valid JSON, the step asks once more with "Reply with only JSON." If that fails too, it raises an error instead of looping, so a bad model can't burn tokens forever.
 - **Timeout:** every call is wrapped in `asyncio.wait_for` (30s by default). A slow model raises a `TimeoutError`, and the executor retries the step with backoff like any other failure.
 - **Cost tracking:** tokens and cost are added up across both calls, so the repair retry is never hidden.
-- **Testable without an API key:** the model is plugged in with `set_llm_client()`, so the 6 LLM tests use a fake model that is free, instant and always gives the same answer.
+- **Testable without an API key:** the model is plugged in with `set_llm_client()`, so the LLM tests use a fake model that is free, instant and always gives the same answer.
 
 **HTTP step: which errors are worth retrying?**
 - **5xx** (500, 503) means the server is broken or busy, so trying again later can work. The step raises a normal error and the executor retries it with backoff.
@@ -87,8 +88,7 @@ A small separate process wakes up once a minute, finds workflows whose `trigger.
 - The worker takes a run id with `BLMOVE`, which moves it from the queue to a `processing` list in one atomic step, instead of deleting it. When the run finishes (succeeded or failed), the worker removes it in a `finally` block (the "ack").
 - If the worker dies, the ack never happens, so the id stays on the processing list. That missing ack is the signal.
 - Once a minute, a reaper checks that list: a run that is already finished is just cleaned up (never run again); a run that has been `running` for less than 15 minutes is left alone; a run older than that is reset to `queued` and put back on the queue for another worker.
-
-**Known limitation:** a requeued run starts again from the first step. If a worker died after an email step had already sent, that email could go out twice. The next step is to have the executor skip steps that already succeeded in that run, so a rescued run resumes where it stopped.
+- **A rescued run resumes where it stopped.** Before running, the executor loads the steps of this run that already succeeded, reuses their saved outputs and skips them. So if a worker died right after an email step, the new worker does not send that email again. This works because every step's output is already saved to the database.
 
 ## Run it
 
@@ -96,13 +96,13 @@ A small separate process wakes up once a minute, finds workflows whose `trigger.
 cd backend
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements-dev.txt
-python -m pytest -q        # 57 passed (uses SQLite + a fake Redis, so no services needed)
+python -m pytest -q        # 58 passed (uses SQLite + a fake Redis, so no services needed)
 
 # full stack with Docker
 cd ..
 docker compose up --build  # API docs at http://localhost:8000/docs
 
-# scheduler (starts workflows that have a cron trigger)
+# scheduler (starts workflows that have a cron trigger, and rescues stuck runs)
 cd backend && python -m app.engine.scheduler
 ```
 
