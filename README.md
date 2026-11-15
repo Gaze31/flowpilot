@@ -6,7 +6,7 @@ You connect steps (a trigger, then an AI step, then an action), and FlowPilot wo
 
 Example workflow: *every morning, read my unread emails → AI picks the urgent ones → send me a summary.*
 
-![tests](https://img.shields.io/badge/tests-58%20passing-brightgreen)
+![tests](https://img.shields.io/badge/tests-63%20passing-brightgreen)
 
 ## Status
 
@@ -22,9 +22,12 @@ Example workflow: *every morning, read my unread emails → AI picks the urgent 
 | Email action (never retried, so no duplicate emails) | ✅ Done |
 | Scheduled triggers (cron, never fires the same minute twice) | ✅ Done |
 | Crash recovery (processing list, reaper, resume from the last finished step) | ✅ Done |
+| Real providers: Google Gemini for the LLM step, a log-only email sender | ✅ Done |
+| Full stack in Docker (API, worker, scheduler, Postgres, Redis) | ✅ Done |
+| Deploy online | ⏳ Next |
 | Visual canvas (Next.js + React Flow) | ⏳ Planned |
 
-**58 tests pass in GitHub Actions CI**, with lint and format checks on every push.
+**63 tests pass in GitHub Actions CI**, with lint and format checks on every push.
 
 ## How it works
 
@@ -90,22 +93,55 @@ A small separate process wakes up once a minute, finds workflows whose `trigger.
 - Once a minute, a reaper checks that list: a run that is already finished is just cleaned up (never run again); a run that has been `running` for less than 15 minutes is left alone; a run older than that is reset to `queued` and put back on the queue for another worker.
 - **A rescued run resumes where it stopped.** Before running, the executor loads the steps of this run that already succeeded, reuses their saved outputs and skips them. So if a worker died right after an email step, the new worker does not send that email again. This works because every step's output is already saved to the database.
 
+**Real providers, plugged in once at startup**
+The LLM and email steps never call an outside service directly. Each one calls a function that is plugged in when the worker starts (`plug_in_providers()`): Google Gemini for the LLM step, and a sender that writes the email to the log for the email step. Tests plug in fakes the same way, so CI never needs an API key and never costs money. Gemini errors follow the same rule as the HTTP step: 5xx is retried, 4xx (a bad key or model name) is not.
+
 ## Run it
 
 ```bash
 cd backend
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements-dev.txt
-python -m pytest -q        # 58 passed (uses SQLite + a fake Redis, so no services needed)
+python -m pytest -q        # 63 passed (SQLite + fakes for Redis, the LLM, HTTP and email: no services or keys needed)
+```
 
-# full stack with Docker
-cd ..
-docker compose up --build  # API docs at http://localhost:8000/docs
+**Full stack with Docker**
 
-# scheduler (starts workflows that have a cron trigger, and rescues stuck runs)
-cd backend && python -m app.engine.scheduler
+1. Get a free Gemini API key from Google AI Studio and create `backend/.env` (never commit it; it is in `.gitignore` and `.dockerignore`):
+   ```
+   LLM_API_KEY=your-gemini-api-key
+   LLM_MODEL=gemini-3.5-flash-lite
+   ```
+2. Start everything (the API runs the database migrations on startup):
+   ```bash
+   docker compose up --build -d
+   docker compose ps          # db, redis, api, worker, scheduler
+   ```
+   API docs: http://localhost:8000/docs. Postgres is exposed on port 5433.
+
+## Try it
+
+`examples/urgent_emails.json` is a three-step workflow: a trigger holding four emails, an LLM step that picks the urgent ones as JSON, and an email step that sends the result.
+
+```bash
+# save the workflow, then start a run with the id it returns
+curl -s -X POST http://localhost:8000/workflows -H "Content-Type: application/json" -d @examples/urgent_emails.json
+curl -s -X POST http://localhost:8000/workflows/<workflow-id>/runs
+
+# watch it run, then read every step's input, output, time and tokens
+docker compose logs worker --tail 20
+curl -s http://localhost:8000/runs/<run-id>
+```
+
+A real run with Gemini finished in under a second:
+```
+starting run b211413e...
+HTTP Request: POST .../gemini-3.5-flash-lite:generateContent "HTTP/1.1 200 OK"
+EMAIL to=me@example.com subject='Urgent emails'
+Urgent: ["Server is down! Customers can't log in."]
+finished run b211413e...
 ```
 
 ## Tech
 
-Python 3.12 · FastAPI · async SQLAlchemy · PostgreSQL · Alembic · Redis · httpx · croniter · Docker Compose · pytest · ruff · GitHub Actions
+Python 3.12 · FastAPI · async SQLAlchemy · PostgreSQL · Alembic · Redis · httpx · croniter · Google Gemini · Docker Compose · pytest · ruff · GitHub Actions
