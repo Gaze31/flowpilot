@@ -12,18 +12,20 @@ EMAILS = [
     "Weekly newsletter: 5 tips for productivity",
 ]
 
+
 async def main() -> None:
     plug_in_providers()
     out = await LLMPrompt().run(
         {
-            "prompt":f"From these emails, list the urgent ones: {EMAILS}",
-            "output_schema":{"urgent":"list[str]"},
-            "max_tokens":2000,
+            "prompt": f"From these emails, list the urgent ones: {EMAILS}",
+            "output_schema": {"urgent": "list[str]"},
+            "max_tokens": 2000,
         },
         {},
     )
     print("JSON: ", out["json"])
     print("Tokens:", out["tokens_used"])
 
+
 if __name__ == "__main__":
-    asyncio.run(main())    
+    asyncio.run(main())
