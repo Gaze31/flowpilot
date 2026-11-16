@@ -6,7 +6,16 @@ You connect steps (a trigger, then an AI step, then an action), and FlowPilot wo
 
 Example workflow: *every morning, read my unread emails → AI picks the urgent ones → send me a summary.*
 
-![tests](https://img.shields.io/badge/tests-63%20passing-brightgreen)
+![tests](https://img.shields.io/badge/tests-68%20passing-brightgreen)
+
+## Live demo
+
+FlowPilot runs on an AWS EC2 server (Docker Compose, all five services):
+
+- **API docs:** http://107.23.248.219:8000/docs
+- **A real run, step by step** (input, output, time and tokens of each step): http://107.23.248.219:8000/runs/02762938-3794-4b0b-978a-d564aab4a298
+
+Reading is public. Creating, changing and running workflows need an API key.
 
 ## Status
 
@@ -24,10 +33,10 @@ Example workflow: *every morning, read my unread emails → AI picks the urgent 
 | Crash recovery (processing list, reaper, resume from the last finished step) | ✅ Done |
 | Real providers: Google Gemini for the LLM step, a log-only email sender | ✅ Done |
 | Full stack in Docker (API, worker, scheduler, Postgres, Redis) | ✅ Done |
-| Deploy online | ⏳ Next |
+| Deployed on AWS EC2, with an API key on every write endpoint | ✅ Done |
 | Visual canvas (Next.js + React Flow) | ⏳ Planned |
 
-**63 tests pass in GitHub Actions CI**, with lint and format checks on every push.
+**68 tests pass in GitHub Actions CI**, with lint and format checks on every push.
 
 ## How it works
 
@@ -96,13 +105,18 @@ A small separate process wakes up once a minute, finds workflows whose `trigger.
 **Real providers, plugged in once at startup**
 The LLM and email steps never call an outside service directly. Each one calls a function that is plugged in when the worker starts (`plug_in_providers()`): Google Gemini for the LLM step, and a sender that writes the email to the log for the email step. Tests plug in fakes the same way, so CI never needs an API key and never costs money. Gemini errors follow the same rule as the HTTP step: 5xx is retried, 4xx (a bad key or model name) is not.
 
+**Going live: what is public, and what is locked**
+- Reading workflows and runs is public, so anyone can look around. Creating, changing, deleting and running a workflow need an `X-API-Key` header, because a run spends the Gemini quota and the HTTP step can call any address. The key is compared with `secrets.compare_digest`, so the check takes the same time whether the first character or the last one is wrong.
+- On the server, only two ports are open: 8000 for the API, and SSH for my own IP address only. Postgres and Redis are bound to `127.0.0.1`, so they are unreachable from the internet even if a firewall rule were opened by mistake.
+- Secrets live in `backend/.env` on each machine and never in git or in a Docker image (`.gitignore` and `.dockerignore` both exclude it). Every service restarts on its own if it crashes or the server reboots.
+
 ## Run it
 
 ```bash
 cd backend
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements-dev.txt
-python -m pytest -q        # 63 passed (SQLite + fakes for Redis, the LLM, HTTP and email: no services or keys needed)
+python -m pytest -q        # 68 passed (SQLite + fakes for Redis, the LLM, HTTP and email: no services or keys needed)
 ```
 
 **Full stack with Docker**
