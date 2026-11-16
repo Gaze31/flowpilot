@@ -1,9 +1,9 @@
-"""Start a run and read run history. Done (the parts it calls are your TODOs).
+"""Start a run and read run history. Starting a run needs the API key; reading is public.
 
 POST /workflows/{id}/runs
-  1. checks the graph has a valid order  -> your topological_sort() (422 if there's a cycle)
+  1. checks the graph has a valid order  -> topological_sort() (422 if there's a cycle)
   2. creates a Run row with status=queued
-  3. puts its id on the Redis queue      -> your enqueue_run()
+  3. puts its id on the Redis queue      -> enqueue_run()
   4. replies 202 straight away. The worker does the slow part later.
 """
 
@@ -14,6 +14,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.api.auth import require_api_key
 from app.api.workflows import get_workflow_or_404
 from app.db.session import get_db
 from app.engine import queue
@@ -25,7 +26,12 @@ from app.schemas import RunDetail, RunOut
 router = APIRouter(tags=["runs"])
 
 
-@router.post("/workflows/{workflow_id}/runs", response_model=RunOut, status_code=status.HTTP_202_ACCEPTED)
+@router.post(
+    "/workflows/{workflow_id}/runs",
+    response_model=RunOut,
+    status_code=status.HTTP_202_ACCEPTED,
+    dependencies=[Depends(require_api_key)],
+)
 async def start_run(workflow_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
     wf = await get_workflow_or_404(db, workflow_id)
     topological_sort(wf.graph)  # raises CycleError -> 422 before anything is queued

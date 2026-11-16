@@ -1,4 +1,4 @@
-"""Workflow CRUD. Done: read it, it's the pattern every other route follows."""
+"""Workflow CRUD. Reading is public; creating, changing and deleting need the API key."""
 
 import uuid
 
@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, Response, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.auth import require_api_key
 from app.db.session import get_db
 from app.errors import NotFound
 from app.models import Workflow
@@ -21,7 +22,12 @@ async def get_workflow_or_404(db: AsyncSession, workflow_id: uuid.UUID) -> Workf
     return wf
 
 
-@router.post("", response_model=WorkflowOut, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "",
+    response_model=WorkflowOut,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_api_key)],
+)
 async def create_workflow(body: WorkflowCreate, db: AsyncSession = Depends(get_db)):
     wf = Workflow(name=body.name, graph=body.graph.model_dump())
     db.add(wf)
@@ -41,7 +47,7 @@ async def get_workflow(workflow_id: uuid.UUID, db: AsyncSession = Depends(get_db
     return await get_workflow_or_404(db, workflow_id)
 
 
-@router.patch("/{workflow_id}", response_model=WorkflowOut)
+@router.patch("/{workflow_id}", response_model=WorkflowOut, dependencies=[Depends(require_api_key)])
 async def update_workflow(workflow_id: uuid.UUID, body: WorkflowUpdate, db: AsyncSession = Depends(get_db)):
     wf = await get_workflow_or_404(db, workflow_id)
     if body.name is not None:
@@ -53,7 +59,11 @@ async def update_workflow(workflow_id: uuid.UUID, body: WorkflowUpdate, db: Asyn
     return wf
 
 
-@router.delete("/{workflow_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{workflow_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_api_key)],
+)
 async def delete_workflow(workflow_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
     wf = await get_workflow_or_404(db, workflow_id)
     await db.delete(wf)

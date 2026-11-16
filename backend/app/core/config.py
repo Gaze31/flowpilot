@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     cors_origins: list[str] = ["http://localhost:3000"]
 
     # Week 3
+    api_key: str | None = None
     llm_api_key: str | None = None
     llm_model: str = "set-your-model-name"
     llm_timeout_seconds: float = 30.0
