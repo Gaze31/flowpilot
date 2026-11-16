@@ -1,11 +1,12 @@
 services:
   db:
     image: postgres:16
+    restart: unless-stopped
     environment:
       POSTGRES_USER: flowpilot
       POSTGRES_PASSWORD: flowpilot
       POSTGRES_DB: flowpilot
-    ports: ["5433:5432"]
+    ports: ["127.0.0.1:5433:5432"]
     volumes: [pgdata:/var/lib/postgresql/data]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U flowpilot"]
@@ -14,10 +15,13 @@ services:
 
   redis:
     image: redis:7
-    ports: ["6379:6379"]
+    restart: unless-stopped
+    ports: ["127.0.0.1:6379:6379"]
 
   api:
     build: ./backend
+    restart: unless-stopped
+    env_file: ./backend/.env
     environment:
       DATABASE_URL: postgresql+asyncpg://flowpilot:flowpilot@db:5432/flowpilot
       REDIS_URL: redis://redis:6379/0
