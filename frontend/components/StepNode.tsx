@@ -2,6 +2,8 @@
 
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 
+import { missingFields } from "@/lib/steps";
+
 // How each step type looks on the canvas
 export const STEP_STYLES: Record<string, { icon: string; label: string; color: string }> = {
   "trigger.manual": { icon: "▶", label: "Manual trigger", color: "#f97316" },
@@ -14,17 +16,18 @@ export const STEP_STYLES: Record<string, { icon: string; label: string; color: s
 export type StepData = { stepType: string; stepId: string; config: Record<string, unknown> };
 
 export function StepNode({ data }: NodeProps) {
-  const { stepType, stepId } = data as StepData;
+  const { stepType, stepId, config } = data as StepData;
   const style = STEP_STYLES[stepType] ?? { icon: "■", label: stepType, color: "#64748b" };
   const isTrigger = stepType.startsWith("trigger.");
-  const handleStyle = { width: 14, height: 14, backgroundColor: style.color, border: "2px solid #18181b" }; // ← NEW
+  const missing = missingFields(stepType, config);
+  const handleStyle = { width: 14, height: 14, backgroundColor: style.color, border: "2px solid #18181b" };
 
   return (
     <div
       className="flex w-56 items-center gap-3 rounded-xl border-2 bg-zinc-900 px-4 py-3 shadow-lg"
       style={{ borderColor: style.color }}
     >
-      {!isTrigger && <Handle type="target" position={Position.Left} style={handleStyle} />} {/* ← CHANGED */}
+      {!isTrigger && <Handle type="target" position={Position.Left} style={handleStyle} />}
       <div
         className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-xl"
         style={{ backgroundColor: style.color + "33", color: style.color }}
@@ -33,9 +36,15 @@ export function StepNode({ data }: NodeProps) {
       </div>
       <div className="min-w-0">
         <p className="truncate text-sm font-semibold text-zinc-100">{style.label}</p>
-        <p className="truncate text-xs text-zinc-400">{stepId}</p>
+        {missing.length > 0 ? (
+          <p className="truncate text-xs text-amber-400">
+            {stepId} · ⚠ needs {missing.join(", ")}
+          </p>
+        ) : (
+          <p className="truncate text-xs text-zinc-400">{stepId}</p>
+        )}
       </div>
-      <Handle type="source" position={Position.Right} style={handleStyle} /> {/* ← CHANGED */}
+      <Handle type="source" position={Position.Right} style={handleStyle} />
     </div>
   );
 }

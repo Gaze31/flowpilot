@@ -20,6 +20,8 @@ import {
 import "@xyflow/react/dist/style.css";
 
 import { saveWorkflowGraph, type Workflow } from "@/lib/api";
+import { missingFields } from "@/lib/steps";
+import { SettingsPanel } from "./SettingsPanel"; // ← NEW
 import { Sidebar } from "./Sidebar";
 import { StepNode, type StepData } from "./StepNode";
 
@@ -73,7 +75,30 @@ function Editor({ workflow }: { workflow: Workflow }) {
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [saveError, setSaveError] = useState("");
 
+  // ← NEW: which step is clicked (only when exactly one is selected)
+  const selectedNodes = nodes.filter((n) => n.selected);
+  const selected = selectedNodes.length === 1 ? selectedNodes[0] : undefined;
+
+  // ← NEW: replace one step's settings
+  function updateConfig(nodeId: string, config: Record<string, unknown>) {
+    setNodes((current) =>
+      current.map((n) => (n.id === nodeId ? { ...n, data: { ...n.data, config } } : n)),
+    );
+    setSaveState("idle");
+  }
+
   async function handleSave() {
+    const problems = nodes.flatMap((n) => {
+      const data = n.data as StepData;
+      const missing = missingFields(data.stepType, data.config);
+      return missing.length > 0 ? [`${n.id} needs ${missing.join(", ")}`] : [];
+    });
+    if (problems.length > 0) {
+      setSaveError(problems.join("; "));
+      setSaveState("error");
+      return;
+    }
+
     setSaveState("saving");
     try {
       await saveWorkflowGraph(workflow.id, toGraph(nodes, edges));
@@ -144,6 +169,16 @@ function Editor({ workflow }: { workflow: Workflow }) {
           </Panel>
         </ReactFlow>
       </div>
+      {/* ← NEW: the settings panel, only when a step is clicked */}
+      {selected && (
+        <SettingsPanel
+          key={selected.id}
+          stepId={selected.id}
+          stepType={(selected.data as StepData).stepType}
+          config={(selected.data as StepData).config}
+          onChange={(config) => updateConfig(selected.id, config)}
+        />
+      )}
     </div>
   );
 }
