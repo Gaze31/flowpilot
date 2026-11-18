@@ -19,7 +19,16 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 
-import { getRun, saveWorkflowGraph, startRun, type Run, type RunStep, type Workflow } from "@/lib/api";
+import {
+  getRun,
+  listRuns,
+  READ_ONLY,
+  saveWorkflowGraph,
+  startRun,
+  type Run,
+  type RunStep,
+  type Workflow,
+} from "@/lib/api";
 import { missingFields } from "@/lib/steps";
 import { SettingsPanel } from "./SettingsPanel";
 import { Sidebar } from "./Sidebar";
@@ -78,6 +87,13 @@ function Editor({ workflow }: { workflow: Workflow }) {
   const [run, setRun] = useState<Run | null>(null);
   const [runError, setRunError] = useState("");
   const running = run !== null && (run.status === "queued" || run.status === "running") && runError === "";
+
+  useEffect(() => {
+    listRuns(workflow.id)
+      .then((runs) => (runs.length > 0 ? getRun(runs[0].id) : null))
+      .then((latest) => setRun((current) => current ?? latest))
+      .catch(() => {});
+  }, [workflow.id]);
 
   useEffect(() => {
     if (!run || !running) return;
@@ -175,7 +191,7 @@ function Editor({ workflow }: { workflow: Workflow }) {
 
   return (
     <div className="flex h-full">
-      <Sidebar />
+      {!READ_ONLY && <Sidebar />}
       <div className="flex-1">
         <ReactFlow
           nodes={displayNodes}
@@ -183,6 +199,8 @@ function Editor({ workflow }: { workflow: Workflow }) {
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
+          nodesConnectable={!READ_ONLY}
+          deleteKeyCode={READ_ONLY ? null : "Backspace"}
           onDragOver={onDragOver}
           onDrop={onDrop}
           nodeTypes={nodeTypes}
@@ -199,25 +217,30 @@ function Editor({ workflow }: { workflow: Workflow }) {
             {runError && <span className="max-w-md text-sm text-red-400">{runError}</span>}
             {saveState === "saved" && <span className="text-sm text-green-400">Saved ✓</span>}
             {saveState === "error" && <span className="max-w-md text-sm text-red-400">Save failed: {saveError}</span>}
-            <button
-              onClick={handleRun}
-              disabled={running}
-              title="Runs the last saved version"
-              className="rounded-md bg-green-600 px-4 py-1.5 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-50"
-            >
-              {running ? "Running..." : "▶ Run"}
-            </button>
-            <button
-              onClick={handleSave}
-              disabled={saveState === "saving"}
-              className="rounded-md bg-orange-500 px-4 py-1.5 text-sm font-semibold text-white hover:bg-orange-600 disabled:opacity-50"
-            >
-              {saveState === "saving" ? "Saving..." : "Save"}
-            </button>
+            {READ_ONLY && <span className="text-sm text-zinc-400">Read-only demo · showing the latest run</span>}
+            {!READ_ONLY && (
+              <>
+                <button
+                  onClick={handleRun}
+                  disabled={running}
+                  title="Runs the last saved version"
+                  className="rounded-md bg-green-600 px-4 py-1.5 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-50"
+                >
+                  {running ? "Running..." : "▶ Run"}
+                </button>
+                <button
+                  onClick={handleSave}
+                  disabled={saveState === "saving"}
+                  className="rounded-md bg-orange-500 px-4 py-1.5 text-sm font-semibold text-white hover:bg-orange-600 disabled:opacity-50"
+                >
+                  {saveState === "saving" ? "Saving..." : "Save"}
+                </button>
+              </>
+            )}
           </Panel>
         </ReactFlow>
       </div>
-      220      {selected && (
+      {selected && (
         <SettingsPanel
           key={selected.id}
           stepId={selected.id}
@@ -225,6 +248,7 @@ function Editor({ workflow }: { workflow: Workflow }) {
           config={(selected.data as StepData).config}
           onChange={(config) => updateConfig(selected.id, config)}
           runStep={lastStepById[selected.id]}
+          readOnly={READ_ONLY}
         />
       )}
     </div>

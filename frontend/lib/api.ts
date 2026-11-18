@@ -1,6 +1,9 @@
 // Talks to the FlowPilot API. The address comes from .env.local.
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
+// The public demo sets this to "true": it hides every editing control.
+export const READ_ONLY = process.env.NEXT_PUBLIC_READ_ONLY === "true";
+
 export type FlowNode = {
   id: string;
   type: string;
@@ -34,6 +37,8 @@ export type Run = {
   steps: RunStep[];
 };
 
+export type RunSummary = Omit<Run, "steps">;
+
 // Reading is public, so these go straight to the API.
 export async function listWorkflows(): Promise<Workflow[]> {
   const res = await fetch(`${API_URL}/workflows`);
@@ -43,6 +48,13 @@ export async function listWorkflows(): Promise<Workflow[]> {
 
 export async function getRun(runId: string): Promise<Run> {
   const res = await fetch(`${API_URL}/runs/${runId}`);
+  if (!res.ok) throw new Error(`API error ${res.status}`);
+  return res.json();
+}
+
+// The API returns the newest run first, without steps.
+export async function listRuns(workflowId: string): Promise<RunSummary[]> {
+  const res = await fetch(`${API_URL}/workflows/${workflowId}/runs`);
   if (!res.ok) throw new Error(`API error ${res.status}`);
   return res.json();
 }

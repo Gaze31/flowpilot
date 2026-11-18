@@ -13,10 +13,11 @@ type Props = {
   stepType: string;
   config: Config;
   onChange: (config: Config) => void;
-  runStep?: RunStep; // ← NEW
+  runStep?: RunStep;
+  readOnly?: boolean; // ← NEW
 };
 
-export function SettingsPanel({ stepId, stepType, config, onChange, runStep }: Props) {
+export function SettingsPanel({ stepId, stepType, config, onChange, runStep, readOnly = false}: Props) {
   const fields = STEP_FIELDS[stepType] ?? [];
   const label = STEP_STYLES[stepType]?.label ?? stepType;
 
@@ -36,7 +37,7 @@ export function SettingsPanel({ stepId, stepType, config, onChange, runStep }: P
       <h2 className="mb-4 mt-1 text-base font-semibold text-zinc-100">
         {label} <span className="text-zinc-500">{stepId}</span>
       </h2>
-      <div className="flex flex-col gap-4">
+      <fieldset disabled={readOnly} className="flex flex-col gap-4 disabled:opacity-70">
         {fields.map((field) => (
           <label key={field.key} className="block">
             <span className="mb-1 block text-xs font-medium text-zinc-400">
@@ -46,7 +47,7 @@ export function SettingsPanel({ stepId, stepType, config, onChange, runStep }: P
             <FieldInput field={field} value={config[field.key]} onChange={(v) => setValue(field.key, v)} />
           </label>
         ))}
-      </div>
+      </fieldset>
 
       {/* ← NEW: the last run's result for this step */}
       {runStep && (
