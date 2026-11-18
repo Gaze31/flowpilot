@@ -22,3 +22,16 @@ export async function listWorkflows(): Promise<Workflow[]>{
     if(!res.ok) throw new Error(`API error ${res.status}`);
     return res.json();
 }
+// Saves through our own Next.js route (/api/...), which adds the API key on the server.
+export async function saveWorkflowGraph(id: string, graph: Workflow["graph"]): Promise<Workflow> {
+  const res = await fetch(`/api/workflows/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ graph }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => null);
+    throw new Error(body?.detail ? JSON.stringify(body.detail) : `API error ${res.status}`);
+  }
+  return res.json();
+}
