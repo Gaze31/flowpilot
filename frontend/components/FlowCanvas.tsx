@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState, type DragEvent } from "react";
+import { useCallback, useEffect, useState, type DragEvent } from "react";
 import {
   addEdge,
   Background,
@@ -19,9 +19,9 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 
-import { saveWorkflowGraph, type Workflow } from "@/lib/api";
+import { getRun, saveWorkflowGraph, startRun, type Run, type RunStep, type Workflow } from "@/lib/api";
 import { missingFields } from "@/lib/steps";
-import { SettingsPanel } from "./SettingsPanel"; // ← NEW
+import { SettingsPanel } from "./SettingsPanel";
 import { Sidebar } from "./Sidebar";
 import { StepNode, type StepData } from "./StepNode";
 
@@ -75,16 +75,53 @@ function Editor({ workflow }: { workflow: Workflow }) {
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [saveError, setSaveError] = useState("");
 
-  // ← NEW: which step is clicked (only when exactly one is selected)
+  const [run, setRun] = useState<Run | null>(null);
+  const [runError, setRunError] = useState("");
+  const running = run !== null && (run.status === "queued" || run.status === "running") && runError === "";
+
+  useEffect(() => {
+    if (!run || !running) return;
+    const timer = setTimeout(async () => {
+      try {
+        setRun(await getRun(run.id));
+      } catch (e) {
+        setRunError((e as Error).message);
+      }
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, [run, running]);
+
+  async function handleRun() {
+    setRunError("");
+    try {
+      const runId = await startRun(workflow.id);
+      setRun({ id: runId, status: "queued", error: null, steps: [] });
+    } catch (e) {
+      setRunError((e as Error).message);
+    }
+  }
+
+  const lastStepById: Record<string, RunStep> = {};
+  for (const step of run?.steps ?? []) {
+    lastStepById[step.node_id] = step;
+  }
+
+  const displayNodes = nodes.map((n) => {
+    if (!run) return n;
+    const step = lastStepById[n.id];
+    const runStatus = step ? step.status : running ? "waiting" : undefined;
+    return { ...n, data: { ...n.data, runStatus, durationMs: step?.duration_ms ?? null } };
+  });
+
   const selectedNodes = nodes.filter((n) => n.selected);
   const selected = selectedNodes.length === 1 ? selectedNodes[0] : undefined;
 
-  // ← NEW: replace one step's settings
   function updateConfig(nodeId: string, config: Record<string, unknown>) {
     setNodes((current) =>
       current.map((n) => (n.id === nodeId ? { ...n, data: { ...n.data, config } } : n)),
     );
     setSaveState("idle");
+    setRun(null);
   }
 
   async function handleSave() {
@@ -141,7 +178,7 @@ function Editor({ workflow }: { workflow: Workflow }) {
       <Sidebar />
       <div className="flex-1">
         <ReactFlow
-          nodes={nodes}
+          nodes={displayNodes}
           edges={edges}
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
@@ -157,8 +194,19 @@ function Editor({ workflow }: { workflow: Workflow }) {
           <Controls />
           <MiniMap pannable zoomable />
           <Panel position="top-right" className="flex items-center gap-3">
+            {run?.status === "succeeded" && <span className="text-sm text-green-400">Run succeeded ✓</span>}
+            {run?.status === "failed" && <span className="max-w-md text-sm text-red-400">Run failed: {run.error}</span>}
+            {runError && <span className="max-w-md text-sm text-red-400">{runError}</span>}
             {saveState === "saved" && <span className="text-sm text-green-400">Saved ✓</span>}
             {saveState === "error" && <span className="max-w-md text-sm text-red-400">Save failed: {saveError}</span>}
+            <button
+              onClick={handleRun}
+              disabled={running}
+              title="Runs the last saved version"
+              className="rounded-md bg-green-600 px-4 py-1.5 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-50"
+            >
+              {running ? "Running..." : "▶ Run"}
+            </button>
             <button
               onClick={handleSave}
               disabled={saveState === "saving"}
@@ -169,7 +217,6 @@ function Editor({ workflow }: { workflow: Workflow }) {
           </Panel>
         </ReactFlow>
       </div>
-      {/* ← NEW: the settings panel, only when a step is clicked */}
       {selected && (
         <SettingsPanel
           key={selected.id}
