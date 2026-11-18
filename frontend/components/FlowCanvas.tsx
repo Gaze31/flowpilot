@@ -217,13 +217,14 @@ function Editor({ workflow }: { workflow: Workflow }) {
           </Panel>
         </ReactFlow>
       </div>
-      {selected && (
+      220      {selected && (
         <SettingsPanel
           key={selected.id}
           stepId={selected.id}
           stepType={(selected.data as StepData).stepType}
           config={(selected.data as StepData).config}
           onChange={(config) => updateConfig(selected.id, config)}
+          runStep={lastStepById[selected.id]}
         />
       )}
     </div>

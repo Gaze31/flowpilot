@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 
+import type { RunStep } from "@/lib/api"; // ← NEW
 import { STEP_FIELDS, type Field } from "@/lib/steps";
 import { STEP_STYLES } from "./StepNode";
 
@@ -12,9 +13,10 @@ type Props = {
   stepType: string;
   config: Config;
   onChange: (config: Config) => void;
+  runStep?: RunStep; // ← NEW
 };
 
-export function SettingsPanel({ stepId, stepType, config, onChange }: Props) {
+export function SettingsPanel({ stepId, stepType, config, onChange, runStep }: Props) {
   const fields = STEP_FIELDS[stepType] ?? [];
   const label = STEP_STYLES[stepType]?.label ?? stepType;
 
@@ -45,6 +47,20 @@ export function SettingsPanel({ stepId, stepType, config, onChange }: Props) {
           </label>
         ))}
       </div>
+
+      {/* ← NEW: the last run's result for this step */}
+      {runStep && (
+        <div className="mt-6 border-t border-zinc-800 pt-4">
+          <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500">Last run</p>
+          <p className={`mb-3 mt-1 text-sm ${runStep.status === "succeeded" ? "text-green-400" : "text-red-400"}`}>
+            {runStep.status === "succeeded" ? "✓ Succeeded" : "✗ Failed"} · attempt {runStep.attempt} ·{" "}
+            {runStep.duration_ms ?? 0} ms
+          </p>
+          {runStep.error && <DataBlock title="Error" value={runStep.error} />}
+          <DataBlock title="Input" value={runStep.input} />
+          <DataBlock title="Output" value={runStep.output} />
+        </div>
+      )}
     </aside>
   );
 }
@@ -134,5 +150,18 @@ function JsonInput({ value, placeholder, onChange }: { value: unknown; placehold
       />
       {error && <span className="mt-1 block text-xs text-red-400">{error}</span>}
     </>
+  );
+}
+
+// ← NEW: a small box that shows text or pretty JSON
+function DataBlock({ title, value }: { title: string; value: unknown }) {
+  const text = typeof value === "string" ? value : JSON.stringify(value, null, 2);
+  return (
+    <div className="mb-3">
+      <p className="mb-1 text-xs font-medium text-zinc-400">{title}</p>
+      <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-md border border-zinc-800 bg-zinc-900 p-2 font-mono text-xs text-zinc-300">
+        {text}
+      </pre>
+    </div>
   );
 }
