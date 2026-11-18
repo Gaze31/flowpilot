@@ -1,5 +1,5 @@
-// Talks to the FlowPilot API. The address comes from .env.local.
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+// Every call goes to our own Next.js routes (/api/...). They talk to the FlowPilot API on the server,
+// so the browser only ever talks to this site, and the API key never reaches the browser.
 
 // The public demo sets this to "true": it hides every editing control.
 export const READ_ONLY = process.env.NEXT_PUBLIC_READ_ONLY === "true";
@@ -39,27 +39,27 @@ export type Run = {
 
 export type RunSummary = Omit<Run, "steps">;
 
-// Reading is public, so these go straight to the API.
+// Reads: public, no key needed.
 export async function listWorkflows(): Promise<Workflow[]> {
-  const res = await fetch(`${API_URL}/workflows`);
+  const res = await fetch("/api/workflows");
   if (!res.ok) throw new Error(`API error ${res.status}`);
   return res.json();
 }
 
 export async function getRun(runId: string): Promise<Run> {
-  const res = await fetch(`${API_URL}/runs/${runId}`);
+  const res = await fetch(`/api/runs/${runId}`);
   if (!res.ok) throw new Error(`API error ${res.status}`);
   return res.json();
 }
 
 // The API returns the newest run first, without steps.
 export async function listRuns(workflowId: string): Promise<RunSummary[]> {
-  const res = await fetch(`${API_URL}/workflows/${workflowId}/runs`);
+  const res = await fetch(`/api/workflows/${workflowId}/runs`);
   if (!res.ok) throw new Error(`API error ${res.status}`);
   return res.json();
 }
 
-// Writes go through our own Next.js routes (/api/...), which add the API key on the server.
+// Writes: the route adds the API key on the server.
 export async function saveWorkflowGraph(id: string, graph: Workflow["graph"]): Promise<Workflow> {
   const res = await fetch(`/api/workflows/${id}`, {
     method: "PATCH",
