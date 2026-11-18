@@ -10,12 +10,16 @@ Example workflow: *every morning, read my unread emails → AI picks the urgent 
 
 ## Live demo
 
-FlowPilot runs on an AWS EC2 server (Docker Compose, all five services):
+**Visual editor: https://flowpilot-gaze31.vercel.app** (read-only public demo, showing the latest real run)
+
+![FlowPilot canvas: a manual trigger, a Gemini step and an email step, all green after a run](docs/canvas.png)
+
+The backend runs on an AWS EC2 server (Docker Compose, all five services):
 
 - **API docs:** http://107.23.248.219:8000/docs
 - **A real run, step by step** (input, output, time and tokens of each step): http://107.23.248.219:8000/runs/02762938-3794-4b0b-978a-d564aab4a298
 
-Reading is public. Creating, changing and running workflows need an API key.
+Reading is public. Creating, changing and running workflows need an API key, so the public demo can look but not change anything.
 
 ## Status
 
@@ -34,7 +38,9 @@ Reading is public. Creating, changing and running workflows need an API key.
 | Real providers: Google Gemini for the LLM step, a log-only email sender | ✅ Done |
 | Full stack in Docker (API, worker, scheduler, Postgres, Redis) | ✅ Done |
 | Deployed on AWS EC2, with an API key on every write endpoint | ✅ Done |
-| Visual canvas (Next.js + React Flow) | ⏳ Planned |
+| Visual editor: drag, connect, configure, save, run (Next.js + React Flow) | ✅ Done |
+| Live run view and step inspector (input, output, attempt, time) | ✅ Done |
+| Frontend deployed on Vercel as a read-only demo | ✅ Done |
 
 **68 tests pass in GitHub Actions CI**, with lint and format checks on every push.
 
@@ -110,6 +116,27 @@ The LLM and email steps never call an outside service directly. Each one calls a
 - On the server, only two ports are open: 8000 for the API, and SSH for my own IP address only. Postgres and Redis are bound to `127.0.0.1`, so they are unreachable from the internet even if a firewall rule were opened by mistake.
 - Secrets live in `backend/.env` on each machine and never in git or in a Docker image (`.gitignore` and `.dockerignore` both exclude it). Every service restarts on its own if it crashes or the server reboots.
 
+## The visual editor
+
+![Step inspector: the Gemini step's real input and output after a run](docs/inspector.png)
+
+Drag steps from the side panel, connect them, click a step to edit its settings, save, and press ▶ Run. Each step turns green or red as the run moves along, and clicking a step shows its last input, output, attempt number and time.
+
+**The API key never reaches the browser**
+- Every call from the page goes to the editor's own server routes (`/api/...`). Those routes call the FlowPilot API, and only the write routes add the `X-API-Key` header, read from a server-only variable.
+- Because the browser only ever talks to its own site, an https page never calls the plain-http API directly, so there is no mixed-content blocking.
+
+**Public demo: read-only, enforced on the server**
+- The public site has no API key at all, so its save and run routes refuse every request, even one sent with curl. Hiding the buttons is only for a clean look; the missing key is the real lock (defense in depth).
+- Why read-only: an open editor would let anyone delete the demo, spend the Gemini quota, or make the HTTP step call any address from my server. The next step would be login plus per-user rate limits.
+
+**Small decisions that prevent real bugs**
+- **Save guard:** the required settings of each step type come from the backend code (`config["url"]` crashes when missing, `config.get(...)` has a default). Save refuses steps with missing settings, so a broken step never reaches the database.
+- **New step ids:** the highest existing number + 1, not the count of steps. After deleting `n2` from three steps, "count + 1" would create a second `n3`.
+- **Polling:** `setTimeout` after each answer instead of `setInterval`, so a slow API can't pile up requests. Polling stops by itself when the run finishes.
+- **Run results stay out of saved data:** the green and red status lives in a display copy of the steps, so pressing Save can never write run results into the workflow.
+- **Latest run on page load:** a newer run started by the user always wins over the older one that loads in the background (no race).
+
 ## Run it
 
 ```bash
@@ -132,6 +159,18 @@ python -m pytest -q        # 68 passed (SQLite + fakes for Redis, the LLM, HTTP 
    docker compose ps          # db, redis, api, worker, scheduler
    ```
    API docs: http://localhost:8000/docs. Postgres is exposed on port 5433.
+
+**Visual editor**
+
+```bash
+cd frontend
+npm install
+# .env.local (never commit it):
+#   NEXT_PUBLIC_API_URL=http://localhost:8000
+#   FLOWPILOT_API_KEY=the same API_KEY as in backend/.env
+npm run dev                 # http://localhost:3000
+```
+Set `NEXT_PUBLIC_READ_ONLY=true` to get the public read-only view.
 
 ## Try it
 
@@ -158,4 +197,6 @@ finished run b211413e...
 
 ## Tech
 
-Python 3.12 · FastAPI · async SQLAlchemy · PostgreSQL · Alembic · Redis · httpx · croniter · Google Gemini · Docker Compose · pytest · ruff · GitHub Actions
+**Backend:** Python 3.12 · FastAPI · async SQLAlchemy · PostgreSQL · Alembic · Redis · httpx · croniter · Google Gemini · Docker Compose · pytest · ruff · GitHub Actions · AWS EC2
+
+**Frontend:** Next.js · React · TypeScript · React Flow · Tailwind CSS · Vercel
