@@ -1,0 +1,65 @@
+{
+  "created_at": "2026-11-19T07:55:22.687028+00:00",
+  "model": "gemini-3.5-flash-lite",
+  "prompt": "You are triaging an inbox. An email is urgent only if the reader must act within about a day, and waiting would cause real harm: money lost, customers affected, a security problem, or a hard deadline missed.\n\nJudge each email by its consequences, not its tone. Alarm words and capital letters used for marketing do not make an email urgent. Promotions, newsletters and automatic notices are not urgent. Unexpected requests to click a link and log in are likely scams; do not mark them urgent.\n\nRelaxed or casual wording can still describe a serious problem; judge the problem, not the wording.\n\nCopy each urgent email's text exactly as given, with no changes.\n\nEmails: {{n1.output.payload.emails}}",
+  "output_schema": {
+    "urgent": "list[str]"
+  },
+  "max_tokens": 2000,
+  "email_count": 30,
+  "batch_size": 10,
+  "seed": 42,
+  "batches": [
+    [
+      "e20",
+      "e15",
+      "e11",
+      "e27",
+      "e23",
+      "e07",
+      "e06",
+      "e13",
+      "e12",
+      "e16"
+    ],
+    [
+      "e10",
+      "e26",
+      "e30",
+      "e22",
+      "e17",
+      "e28",
+      "e02",
+      "e14",
+      "e19",
+      "e03"
+    ],
+    [
+      "e18",
+      "e29",
+      "e05",
+      "e25",
+      "e08",
+      "e09",
+      "e24",
+      "e01",
+      "e04",
+      "e21"
+    ]
+  ],
+  "scores": {
+    "tp": 10,
+    "fp": 0,
+    "fn": 0,
+    "invented": 0,
+    "precision": 1.0,
+    "recall": 1.0,
+    "f1": 1.0,
+    "strict_precision": 1.0
+  },
+  "false_positives": [],
+  "false_negatives": [],
+  "invented": [],
+  "warnings": [],
+  "tokens_used": 1379
+}

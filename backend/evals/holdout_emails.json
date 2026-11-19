@@ -1,0 +1,12 @@
+[
+  {"id": "h01", "text": "A ProMates client says their website is down and the product launch is tomorrow morning, so customers cannot access the site before launch.", "urgent": true},
+  {"id": "h02", "text": "My bank sent an SMS saying ₹18,500 was debited from my account for a transaction I never made, and I need to report it immediately.", "urgent": true},
+  {"id": "h03", "text": "HR emailed me that my interview slot is available only if I confirm by tonight, otherwise they will give it to another candidate.", "urgent": true},
+  {"id": "h04", "text": "The college exam form submission deadline is tomorrow, and missing it means I cannot appear for the upcoming exams.", "urgent": true},
+  {"id": "h05", "text": "A client says their contact form is broken and losing customer leads, but casually says I can look at it whenever I get time.", "urgent": true},
+  {"id": "h06", "text": "LinkedIn notified me that my profile appeared in 12 searches this week and suggested I update my profile to attract more opportunities.", "urgent": false},
+  {"id": "h07", "text": "IMPORTANT: My free trial is ending soon, and the subscription will renew next week if I don't cancel it.", "urgent": false},
+  {"id": "h08", "text": "A friend sent me a wedding invitation for next month and asked me to let them know if I can attend.", "urgent": false},
+  {"id": "h09", "text": "AWS emailed me that my monthly billing statement is ready to view, showing the charges for the services I used this month.", "urgent": false},
+  {"id": "h10", "text": "A client asked if I could change the logo color on their website sometime next week because they want it to match their new branding.", "urgent": false}
+]

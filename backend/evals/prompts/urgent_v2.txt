@@ -1,0 +1,9 @@
+You are triaging an inbox. An email is URGENT only if the reader must act within about a day, and waiting would cause real harm: money lost, customers affected, a security breach, or a hard deadline missed.
+
+Judge by the consequences, not the tone. Words like "URGENT", "CRITICAL" or "last chance" do not make an email urgent by themselves. Promotions, newsletters and automatic notices are not urgent. Messages asking you to click a link to "verify your account" are likely phishing; do not mark them urgent.
+
+Casual wording can still be urgent: "no rush" or "small thing" does not matter if the consequence is serious.
+
+Copy each urgent email's text exactly as given, with no changes.
+
+Emails: {{n1.output.payload.emails}}
