@@ -171,7 +171,24 @@ npm install
 npm run dev                 # http://localhost:3000
 ```
 Set `NEXT_PUBLIC_READ_ONLY=true` to get the public read-only view.
+## Measuring the LLM step (evals)
 
+The urgent-email step is only useful if it picks the right emails, so I measure it instead of guessing.
+
+- `backend/evals/run_eval.py` runs the real LLM step on labelled emails and prints precision, recall and F1, plus any answer that doesn't match an email exactly ("invented").
+- Emails are shuffled with a fixed seed before batching, so every batch is mixed and runs are repeatable.
+- **Practice set:** 30 emails I tuned the prompt on. **Holdout set:** 10 emails I wrote myself and never used while editing prompts. Only the holdout counts as the real score.
+
+| Prompt | Practice F1 | Holdout F1 | Tokens (holdout) |
+|---|---|---|---|
+| v1: "list the urgent ones" | 0.91 | 0.89 | 416 |
+| v3: urgency = action needed + real harm; judge consequences, not tone | 1.00 | 1.00 | 598 |
+
+**What the eval found:** v1 judged emails by tone. It flagged a "URGENT!!! 20% off" promotion, and missed a client casually mentioning that a broken contact form was losing leads. v3 defines urgency by consequences and fixed both.
+
+**Honest limits:** the sets are small (one miss on the holdout = 0.20 recall), each prompt was run once, and v3 uses about 40% more tokens. An earlier v2 prompt quoted phrases from the test emails, so I threw it out and rewrote it as v3.
+
+Run it: `cd backend && python -m evals.run_eval --prompt-file evals/prompts/urgent_v3.txt`
 ## Try it
 
 `examples/urgent_emails.json` is a three-step workflow: a trigger holding four emails, an LLM step that picks the urgent ones as JSON, and an email step that sends the result.
