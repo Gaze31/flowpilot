@@ -6,7 +6,7 @@ You connect steps (a trigger, then an AI step, then an action), and FlowPilot wo
 
 Example workflow: *every morning, read my unread emails → AI picks the urgent ones → send me a summary.*
 
-![tests](https://img.shields.io/badge/tests-68%20passing-brightgreen)
+![tests](https://img.shields.io/badge/tests-96%20passing-brightgreen)
 
 ## Live demo
 
@@ -41,8 +41,9 @@ Reading is public. Creating, changing and running workflows need an API key, so 
 | Visual editor: drag, connect, configure, save, run (Next.js + React Flow) | ✅ Done |
 | Live run view and step inspector (input, output, attempt, time) | ✅ Done |
 | Frontend deployed on Vercel as a read-only demo | ✅ Done |
+| Evals for the LLM step (precision, recall, F1, holdout set) | ✅ Done |
 
-**68 tests pass in GitHub Actions CI**, with lint and format checks on every push.
+**96 tests pass in GitHub Actions CI**, with lint and format checks on every push.
 
 ## How it works
 
@@ -137,13 +138,32 @@ Drag steps from the side panel, connect them, click a step to edit its settings,
 - **Run results stay out of saved data:** the green and red status lives in a display copy of the steps, so pressing Save can never write run results into the workflow.
 - **Latest run on page load:** a newer run started by the user always wins over the older one that loads in the background (no race).
 
+## Measuring the LLM step (evals)
+
+The urgent-email step is only useful if it picks the right emails, so I measure it instead of guessing.
+
+- `backend/evals/run_eval.py` runs the real LLM step on labelled emails and prints precision, recall and F1, plus any answer that doesn't match an email exactly ("invented").
+- Emails are shuffled with a fixed seed before batching, so every batch is mixed and runs are repeatable.
+- **Practice set:** 30 emails I tuned the prompt on. **Holdout set:** 10 emails I wrote myself and never used while editing prompts. Only the holdout counts as the real score.
+
+| Prompt | Practice F1 | Holdout F1 | Tokens (holdout) |
+|---|---|---|---|
+| v1: "list the urgent ones" | 0.91 | 0.89 | 416 |
+| v3: urgency = action needed + real harm; judge consequences, not tone | 1.00 | 1.00 | 598 |
+
+**What the eval found:** v1 judged emails by tone. It flagged a "URGENT!!! 20% off" promotion, and missed a client casually mentioning that a broken contact form was losing leads. v3 defines urgency by consequences and fixed both.
+
+**Honest limits:** the sets are small (one miss on the holdout = 0.20 recall), each prompt was run once, and v3 uses about 40% more tokens. An earlier v2 prompt quoted phrases from the test emails, so I threw it out and rewrote it as v3.
+
+Run it: `cd backend && python -m evals.run_eval --prompt-file evals/prompts/urgent_v3.txt`
+
 ## Run it
 
 ```bash
 cd backend
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements-dev.txt
-python -m pytest -q        # 68 passed (SQLite + fakes for Redis, the LLM, HTTP and email: no services or keys needed)
+python -m pytest -q        # 96 passed (SQLite + fakes for Redis, the LLM, HTTP and email: no services or keys needed)
 ```
 
 **Full stack with Docker**
