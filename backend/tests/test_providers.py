@@ -101,7 +101,7 @@ async def test_resend_5xx_is_a_normal_retryable_error(monkeypatch):
     assert not isinstance(info.value, NonRetryableError)
 
 
-async def test_resend_timeout_is_a_normal_retryable_error(monkeypatch):
+async def test_resend_timeout_raises_a_plain_error(monkeypatch):
     def slow(request):
         raise httpx.ReadTimeout("too slow", request=request)
 
