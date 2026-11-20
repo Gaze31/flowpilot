@@ -75,3 +75,36 @@ async def test_executor_does_not_retry_a_4xx(db, fake_sleep, sleeps):
     assert run.status == RunStatus.FAILED
     assert len(seen) == 1
     assert sleeps == []
+
+
+async def test_keep_fields_trims_each_item_in_the_list():
+    seen: list[httpx.Request] = []
+    jobs = {
+        "totalCount": 2,
+        "jobs": [
+            {"title": "Python Dev", "companyName": "A", "description": "very long text"},
+            {"title": "Backend Eng", "companyName": "B", "description": "more long text"},
+        ],
+    }
+    set_http_transport(fake_server(200, jobs, seen))
+    out = await HttpAction().run({"url": "https://example.com", "list_key": "jobs", "keep_fields": ["title", "companyName"]}, {})
+    assert out["body"] == {
+        "jobs": [
+            {"title": "Python Dev", "companyName": "A"},
+            {"title": "Backend Eng", "companyName": "B"},
+        ]
+    }
+
+
+async def test_keep_fields_works_on_a_top_level_list():
+    seen: list[httpx.Request] = []
+    set_http_transport(fake_server(200, [{"a": 1, "b": 2}], seen))
+    out = await HttpAction().run({"url": "https://example.com", "keep_fields": ["a"]}, {})
+    assert out["body"] == [{"a": 1}]
+
+
+async def test_keep_fields_with_a_wrong_list_key_is_not_retryable():
+    seen: list[httpx.Request] = []
+    set_http_transport(fake_server(200, {"jobs": []}, seen))
+    with pytest.raises(NonRetryableError):
+        await HttpAction().run({"url": "https://example.com", "list_key": "results", "keep_fields": ["a"]}, {})

@@ -1,6 +1,7 @@
-"""Action nodes: the last blocks, which change something in the world. TODO Week 3.
+"""Action nodes: the last blocks, which change something in the world.
 
-action.http   Config: {"method": "POST", "url": "...", "json": {...}}
+action.http   Config: {"method": "POST", "url": "...", "json": {...},
+                       "list_key": "jobs", "keep_fields": ["title", ...]}   (last two optional)
               Output: {"status_code": 200, "body": ...}
 action.email  Config: {"to": "...", "subject": "...", "body": "..."}
               Output: {"sent": true, "message_id": "..."}
@@ -52,6 +53,15 @@ def set_http_transport(transport: httpx.AsyncBaseTransport | None) -> None:
     _transport = transport
 
 
+def keep_fields(body: Any, list_key: str | None, fields: list[str]) -> Any:
+    """Keep only some fields of each item in a JSON list, so the next step gets a small input."""
+    items = body.get(list_key) if list_key and isinstance(body, dict) else body
+    if not isinstance(items, list):
+        raise NonRetryableError(f"keep_fields: expected a list at '{list_key or 'the top level'}'")
+    trimmed = [{f: item[f] for f in fields if f in item} for item in items if isinstance(item, dict)]
+    return {list_key: trimmed} if list_key else trimmed
+
+
 @register
 class HttpAction(Node):
     type = "action.http"
@@ -72,5 +82,9 @@ class HttpAction(Node):
             body = response.json()
         except ValueError:
             body = response.text
+
+        fields = config.get("keep_fields")
+        if fields:
+            body = keep_fields(body, config.get("list_key"), fields)
 
         return {"status_code": response.status_code, "body": body}

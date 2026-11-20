@@ -26,6 +26,8 @@ export const STEP_FIELDS: Record<string, Field[]> = {
     { key: "url", label: "URL", kind: "text", required: true, placeholder: "https://example.com/hook" },
     { key: "method", label: "Method", kind: "select", options: ["GET", "POST", "PUT", "PATCH", "DELETE"] },
     { key: "json", label: "JSON body", kind: "json", placeholder: '{"text": "{{n2.output.text}}"}' },
+    { key: "list_key", label: "List key (optional)", kind: "text", placeholder: "jobs" },
+    { key: "keep_fields", label: "Keep only these fields (optional)", kind: "json", placeholder: '["title", "applicationLink"]' },
   ],
   "action.email": [
     { key: "to", label: "To", kind: "text", required: true, placeholder: "me@example.com" },
