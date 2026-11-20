@@ -6,7 +6,7 @@ You connect steps (a trigger, then an AI step, then an action), and FlowPilot wo
 
 Example workflow: *every morning, read my unread emails → AI picks the urgent ones → send me a summary.*
 
-![tests](https://img.shields.io/badge/tests-96%20passing-brightgreen)
+![tests](https://img.shields.io/badge/tests-103%20passing-brightgreen)
 
 ## Live demo
 
@@ -35,7 +35,7 @@ Reading is public. Creating, changing and running workflows need an API key, so 
 | Email action (never retried, so no duplicate emails) | ✅ Done |
 | Scheduled triggers (cron, never fires the same minute twice) | ✅ Done |
 | Crash recovery (processing list, reaper, resume from the last finished step) | ✅ Done |
-| Real providers: Google Gemini for the LLM step, a log-only email sender | ✅ Done |
+| Real providers: Google Gemini for the LLM step, a log-only email sender by default, real email through Resend when `RESEND_API_KEY` is set | ✅ Done |
 | Full stack in Docker (API, worker, scheduler, Postgres, Redis) | ✅ Done |
 | Deployed on AWS EC2, with an API key on every write endpoint | ✅ Done |
 | Visual editor: drag, connect, configure, save, run (Next.js + React Flow) | ✅ Done |
@@ -43,7 +43,7 @@ Reading is public. Creating, changing and running workflows need an API key, so 
 | Frontend deployed on Vercel as a read-only demo | ✅ Done |
 | Evals for the LLM step (precision, recall, F1, holdout set) | ✅ Done |
 
-**96 tests pass in GitHub Actions CI**, with lint and format checks on every push.
+**103 tests pass in GitHub Actions CI**, with lint and format checks on every push.
 
 ## How it works
 
@@ -96,6 +96,8 @@ If the sort finishes with fewer steps than the workflow has, there's a loop (for
 
 **Email step: why it is never retried (idempotency)**
 If the email server sends the message but the connection drops before we hear back, the step looks like it failed. Retrying would send the same email twice, which is worse than failing once. So the email step is marked non-retryable and runs exactly once; if it fails, the run fails and the log shows why. The address is checked before anything is sent, and the sender is plugged in with `set_email_sender()`, so tests use a fake that records emails instead of sending them.
+
+By default the sender only writes the email to the log, which is safe for demos. Set `RESEND_API_KEY` (and optionally `EMAIL_FROM`, default `FlowPilot <onboarding@resend.dev>`) in `backend/.env` and the worker sends real emails through Resend instead. A Resend 4xx (bad address, bad key) fails the step right away; a 5xx or timeout is a normal error. The key is never logged.
 
 **Scheduler: what stops it from starting the same workflow twice in one minute?**
 A small separate process wakes up once a minute, finds workflows whose `trigger.schedule` cron (for example `0 8 * * *`, every day at 08:00 UTC) matches the current minute, and starts them exactly like the "start run" API does, so the same worker executes them.
@@ -163,7 +165,7 @@ Run it: `cd backend && python -m evals.run_eval --prompt-file evals/prompts/urge
 cd backend
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements-dev.txt
-python -m pytest -q        # 96 passed (SQLite + fakes for Redis, the LLM, HTTP and email: no services or keys needed)
+python -m pytest -q        # 103 passed (SQLite + fakes for Redis, the LLM, HTTP and email: no services or keys needed)
 ```
 
 **Full stack with Docker**

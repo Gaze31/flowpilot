@@ -2,7 +2,10 @@
 
 from functools import lru_cache
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+DEFAULT_EMAIL_FROM = "FlowPilot <onboarding@resend.dev>"
 
 
 class Settings(BaseSettings):
@@ -24,6 +27,19 @@ class Settings(BaseSettings):
     llm_api_key: str | None = None
     llm_model: str = "set-your-model-name"
     llm_timeout_seconds: float = 30.0
+
+    # Email: Resend is used only when resend_api_key is set, otherwise emails are just logged
+    resend_api_key: str | None = None
+    email_from: str = DEFAULT_EMAIL_FROM
+    email_timeout_seconds: float = 15.0
+
+    @field_validator("email_from", mode="before")
+    @classmethod
+    def _blank_email_from_means_default(cls, value: object) -> object:
+        # An empty `EMAIL_FROM=` line in .env (like the template) should not wipe out the default
+        if value is None or (isinstance(value, str) and not value.strip()):
+            return DEFAULT_EMAIL_FROM
+        return value
 
 
 @lru_cache

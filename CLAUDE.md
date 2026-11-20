@@ -40,7 +40,7 @@ CI (`.github/workflows/ci.yml`) only covers the backend: ruff check, ruff format
 - Raise `NonRetryableError` (from `app/errors.py`) for errors that won't fix themselves (HTTP 4xx, Gemini 4xx); plain exceptions are retried (5xx, timeouts).
 - Output keys `tokens_used` / `cost_usd` are picked up automatically into the `StepRun`.
 
-**Providers are injected, never called directly.** The LLM and email nodes call functions set via `set_llm_client()` / `set_email_sender()`. `engine/providers.py::plug_in_providers()` wires real ones (Gemini over httpx, a log-only email sender) at worker startup; tests plug in fakes. Keep this pattern for any new external integration so tests stay offline and free.
+**Providers are injected, never called directly.** The LLM and email nodes call functions set via `set_llm_client()` / `set_email_sender()`. `engine/providers.py::plug_in_providers()` wires real ones (Gemini over httpx, Resend over httpx when `RESEND_API_KEY` is set, otherwise a log-only email sender) at worker startup; tests plug in fakes. Keep this pattern for any new external integration so tests stay offline and free.
 
 **Auth.** Reads are public. Write endpoints depend on `require_api_key` (`app/api/auth.py`), which checks `X-API-Key` with `secrets.compare_digest`; if `API_KEY` is unset, writes are open (local dev/tests).
 

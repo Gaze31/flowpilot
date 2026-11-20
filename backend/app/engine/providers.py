@@ -17,6 +17,7 @@ from app.errors import NonRetryableError
 log = logging.getLogger("flowpilot.providers")
 
 GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+RESEND_URL = "https://api.resend.com/emails"
 
 # Section 2
 
@@ -59,6 +60,30 @@ async def log_email(to: str, subject: str, body: str) -> str:
     return message_id
 
 
+def _http_client() -> httpx.AsyncClient:
+    """One place that builds the client for Resend, so tests can swap in a MockTransport."""
+    return httpx.AsyncClient(timeout=get_settings().email_timeout_seconds)
+
+
+async def resend_email(to: str, subject: str, body: str) -> str:
+    """Sends a real email through Resend and returns Resend's message id."""
+    settings = get_settings()
+    async with _http_client() as client:
+        response = await client.post(
+            RESEND_URL,
+            headers={"Authorization": f"Bearer {settings.resend_api_key or ''}"},
+            json={"from": settings.email_from, "to": to, "subject": subject, "text": body},
+        )
+    if response.status_code >= 500:
+        raise RuntimeError(f"Resend server error {response.status_code}: {response.text[:300]}")
+    if response.status_code >= 400:
+        raise NonRetryableError(f"Resend rejected the email ({response.status_code}): {response.text[:300]}")
+    try:
+        return str(response.json()["id"])
+    except (KeyError, ValueError, TypeError):
+        raise RuntimeError(f"Resend reply had no message id: {response.text[:300]}") from None
+
+
 def plug_in_providers() -> None:
     settings = get_settings()
     if settings.llm_api_key:
@@ -66,4 +91,9 @@ def plug_in_providers() -> None:
         log.info("LLM:Gemini, model %s", settings.llm_model)
     else:
         log.warning("LLM_API_KEY is not set, so llm.prompt steps will fail")
-    set_email_sender(log_email)
+    if settings.resend_api_key:
+        set_email_sender(resend_email)
+        log.info("Email: Resend, from %s", settings.email_from)
+    else:
+        set_email_sender(log_email)
+        log.warning("RESEND_API_KEY is not set, so emails are only written to the log")
