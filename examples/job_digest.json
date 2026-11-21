@@ -1,0 +1,37 @@
+{
+  "name": "Daily job digest",
+  "graph": {
+    "nodes": [
+      {"id": "n1", "type": "trigger.schedule", "config": {"cron": "30 3 * * *"}},
+      {"id": "n2", "type": "action.http", "config": {
+        "method": "GET",
+        "url": "https://himalayas.app/jobs/api/search?q=python&country=India&sort=recent",
+        "list_key": "jobs",
+        "keep_fields": ["title", "companyName", "excerpt", "seniority", "employmentType", "locationRestrictions", "minSalary", "maxSalary", "currency", "salaryPeriod", "applicationLink"]
+      }},
+      {"id": "n5", "type": "action.http", "config": {
+        "method": "GET",
+        "url": "https://himalayas.app/jobs/api/search?q=python&country=India&seniority=Entry-level&sort=recent",
+        "list_key": "jobs",
+        "keep_fields": ["title", "companyName", "excerpt", "seniority", "employmentType", "locationRestrictions", "minSalary", "maxSalary", "currency", "salaryPeriod", "applicationLink"]
+      }},
+      {"id": "n3", "type": "llm.prompt", "config": {
+        "prompt": "You help Sumedha find jobs. She is a fresher Python backend and AI developer in India with 0 years of work experience. Her projects use FastAPI, Redis, PostgreSQL, Docker, AWS, Next.js, LLM workflows and LLM evals. She also has an M.Com in Finance and has worked with clients.\n\nBelow are two lists of jobs open to India. Pick up to 5 that fit her best.\n- Entry-level, junior and intern roles in software, backend, AI, automation or data are best.\n- Mid-level roles are fine if her skills match well; label them \"Stretch\".\n- Paid AI coding or AI evaluation contract work also counts.\n- Skip roles that need a PhD, roles labelled senior/lead/staff/principal/director/manager, and roles unrelated to software, data or AI.\n- Prefer the real employer over job boards that repost other companies' jobs.\n\nFor each pick, write: the title and company, \"Stretch\" if it is one, the salary if given, one line on why it fits her, and the applicationLink copied exactly as given. Only write \"No good matches today.\" if every job breaks the rules above.\n\nAll levels: {{n2.output.body.jobs}}\n\nEntry-level: {{n5.output.body.jobs}}",
+        "output_schema": {"digest": "str"},
+        "max_tokens": 2000
+      }},
+      {"id": "n4", "type": "action.email", "config": {
+        "to": "sumedha.hundekar31@gmail.com",
+        "subject": "Your daily job picks",
+        "body": "{{n3.output.json.digest}}\n\nJobs from Himalayas (himalayas.app)"
+      }}
+    ],
+    "edges": [
+      {"source": "n1", "target": "n2"},
+      {"source": "n1", "target": "n5"},
+      {"source": "n2", "target": "n3"},
+      {"source": "n5", "target": "n3"},
+      {"source": "n3", "target": "n4"}
+    ]
+  }
+}
